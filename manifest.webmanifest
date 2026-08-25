@@ -1,0 +1,9 @@
+{
+  "name": "DraftForge V8.5 Turn-Aware",
+  "short_name": "DraftForge",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#090b0e",
+  "theme_color": "#0d0f12",
+  "description": "Turn-aware fantasy football draft command center."
+}

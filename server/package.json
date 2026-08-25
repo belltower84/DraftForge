@@ -1,0 +1,8 @@
+{
+  "name": "draftforge-v8-5-server",
+  "private": true,
+  "version": "8.5.0",
+  "type": "module",
+  "scripts": {"start": "node server.js"},
+  "dependencies": {"express": "^5.1.0", "multer": "^2.0.2"}
+}

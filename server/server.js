@@ -1,0 +1,15 @@
+import express from 'express';
+import multer from 'multer';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+const __dirname=path.dirname(fileURLToPath(import.meta.url));
+const root=path.resolve(__dirname,'..');
+const app=express();
+const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:8*1024*1024,files:6}});
+app.use(express.json({limit:'1mb'}));
+app.use(express.static(root));
+app.get('/api/health',(req,res)=>res.json({ok:true,version:'8.5'}));
+app.get('/api/yahoo/picks',(req,res)=>res.status(501).json({error:'Yahoo OAuth provider is not configured. Add a server-side provider using environment variables; never place Yahoo secrets in the public repo.'}));
+app.post('/api/screenshot/analyze',upload.array('images',6),(req,res)=>res.status(501).json({error:'Screenshot AI provider is not configured. Manual Screenshot Sync remains available in the static app.'}));
+const port=process.env.PORT||3000;
+app.listen(port,()=>console.log(`DraftForge V8.5 server listening on http://localhost:${port}`));
