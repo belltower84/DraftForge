@@ -9,3 +9,19 @@
 
 /* V8.8 bye-aware roster construction */
 .bye-note{display:inline-flex;margin-top:4px;padding:2px 5px;border-radius:4px;font-size:8px;font-weight:900;letter-spacing:.05em}.bye-note.good,.bye-adjust.good{color:var(--green)}.bye-note.warn,.bye-adjust.warn{color:var(--gold)}.bye-note.bad,.bye-adjust.bad{color:var(--red)}.bye-note.neutral,.bye-adjust.neutral{color:var(--muted)}.bye-note.bad{background:rgba(239,83,80,.08);border:1px solid rgba(239,83,80,.18)}.bye-note.warn{background:rgba(243,207,100,.06);border:1px solid rgba(243,207,100,.15)}.bye-note.good{background:rgba(53,198,111,.06);border:1px solid rgba(53,198,111,.15)}.bye-load{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}.bye-chip{padding:3px 6px;border-radius:4px;border:1px solid var(--line);background:#0e1115;font-size:9px}.bye-chip.warm{color:var(--gold);border-color:rgba(243,207,100,.28)}.bye-chip.hot{color:var(--red);border-color:rgba(239,83,80,.30);background:rgba(239,83,80,.06)}.bye-adjust{font-size:8px;margin-top:2px;font-weight:800}
+
+/* V8.9 board snapshot */
+.board-sync-summary{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px 14px;margin-top:-2px;margin-bottom:14px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.025)}
+.board-sync-summary strong{font-size:13px}.board-sync-summary small{color:var(--muted);text-align:right}
+.league-rosters{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.league-roster{border:1px solid var(--line);border-radius:10px;padding:10px;background:rgba(255,255,255,.02);min-width:0}
+.league-roster.mine{border-color:var(--primary);background:rgba(255,120,45,.06)}
+.league-roster>div{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.league-roster strong{font-size:13px}.league-roster span{font-size:10px;font-weight:900;padding:2px 6px;border-radius:999px;background:var(--primary);color:#111}.league-roster small{margin-left:auto;color:var(--muted)}
+.league-roster p{margin:7px 0 0;color:var(--muted);font-size:11px;line-height:1.45}.league-roster em{font-style:normal;color:var(--text);font-size:9px;font-weight:800}
+.snapshot-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:10px}.snapshot-kpis>div{border:1px solid var(--line);border-radius:9px;padding:9px;text-align:center}.snapshot-kpis b{display:block;font-size:19px}.snapshot-kpis span{font-size:10px;color:var(--muted)}
+.sync-warning{border:1px solid rgba(255,184,72,.45);background:rgba(255,184,72,.08);padding:9px 10px;border-radius:9px;font-size:12px;margin-top:8px}
+@media(max-width:1050px){.league-rosters{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:760px){.league-rosters{grid-template-columns:repeat(2,minmax(0,1fr))}.board-sync-summary{align-items:flex-start;flex-direction:column}.board-sync-summary small{text-align:left}.snapshot-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* V8.9 review rows use three columns */
+#screenshotModal .review-item{grid-template-columns:64px minmax(0,1fr) 62px}

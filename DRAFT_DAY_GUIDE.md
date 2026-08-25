@@ -1,38 +1,48 @@
-# DraftForge V8.8 Draft Day Guide
+# DraftForge V8.9 Draft Day Guide
 
 ## Before the room opens
 
-- Open Yahoo and DraftForge side by side.
-- Select **Live Draft**.
-- Confirm league size, scoring, roster slots, and your draft slot.
-- Do not press Reset Live Draft once the real draft has started unless you truly want to erase the current draft state.
+1. Open your Yahoo draft room.
+2. Open DraftForge in another browser window or monitor.
+3. Select **Live Draft**.
+4. Confirm the league settings.
+5. Set your draft slot if you know it. V8.9 can also infer it from Yahoo's `You` board column.
+6. Press **Reset Live Draft** once before selections begin.
 
-## Screenshot workflow
+## Once per round
 
-1. In Yahoo choose **Results → Round by Round**.
-2. Press `Win + Shift + S` and capture the results table.
-3. Press `Ctrl+V` anywhere in DraftForge.
-4. DraftForge opens Smart Screenshot Sync and begins reading the image automatically.
-5. Verify **KNOWN** and **NEW** rows.
-6. Press **Apply & Recommend**.
-7. DraftForge stores the picks locally and refreshes Best Move Now.
+Wait until **you are actually on the clock** when possible. This ensures the screenshot includes every selection before yours.
 
-### First screenshot
-Include the whole draft so far. This establishes chronological pick memory.
+1. In Yahoo, stay on the **Board** tab.
+2. Press `Win + Shift + S`.
+3. Capture the full Yahoo draft view, including the 12 board columns and the current clock cell.
+4. Switch to DraftForge.
+5. Press `Ctrl + V` anywhere.
+6. DraftForge automatically analyzes the board.
 
-### Later screenshots
-They may overlap older picks. DraftForge uses the overlap to continue from its existing memory and ignores selections it already knows.
+A clean snapshot will:
 
-## Manual live workflow
+- add only picks DraftForge did not already know,
+- assign each pick to the correct fantasy team,
+- update all opponent rosters,
+- update your roster,
+- remove those players from the available pool,
+- update bye-week exposure,
+- update opponent positional needs,
+- recalculate player survival to your next turn,
+- show the new Best Move Now.
 
-- Opponent pick: click **Gone**.
-- Your pick: make the selection in Yahoo, then click **Draft** in DraftForge.
-- Mistake: click **Undo**.
+## If the screenshot is unclear
 
-## Safety rule
+DraftForge will leave the existing draft memory untouched if it finds:
 
-DraftForge never deliberately fills a missing selection by guessing. If a screenshot does not provide enough overlap/continuity, it stops and asks for a more complete Yahoo Results capture.
+- a missing completed pick,
+- a player in a different pick than previously remembered,
+- a draft-slot mismatch,
+- or an OCR gap before the detected current pick.
 
+Take another board screenshot. Do not force a bad sync just to save a few seconds.
 
-## Bye-week logic
-DraftForge now uses the official 2026 NFL bye schedule. Treat the bye adjustment as a roster-construction tiebreaker, not a command to pass on an elite value. The engine intentionally weights bye conflicts lightly in the first three rounds and more heavily as the roster fills. Same-bye backup QBs and TEs are penalized more strongly because they cannot cover the starter during the bye.
+## Emergency manual workflow
+
+The old Draft/Gone controls remain available as a fallback. They should not be needed during normal V8.9 operation.

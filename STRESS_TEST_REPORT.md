@@ -1,4 +1,4 @@
-# DraftForge V8.7 Validation Report
+# DraftForge V8.9 Validation Report
 
 ## Engine regression
 - 12/12 draft slots completed full simulated drafts.
@@ -37,6 +37,8 @@ The raw OCR contained several distortions (for example Barkley, McCaffrey, Nacua
 node tests/smoke.cjs
 node tests/live-engine.cjs
 node tests/screenshot-sync.cjs
+node tests/bye-aware.cjs
+node tests/board-snapshot.cjs
 ```
 
 All tests passed on the packaged build.
@@ -50,3 +52,13 @@ All tests passed on the packaged build.
 - Lineup Optimizer returns zero projection with BYE status on the mapped bye week.
 - `tests/bye-aware.cjs`: PASS.
 - Existing full-draft, live-mode, and screenshot-memory tests: PASS.
+
+## V8.9 board-snapshot regression
+
+V8.9 adds a board-grid parser and full-state reconciliation layer. Regression coverage verifies that a single Yahoo-style board snapshot can reconstruct 42 completed selections through overall pick 42, identify the user's slot, detect overall pick 43 as the current clock, preserve snake-draft team assignment, and produce a conflict-free cumulative state.
+
+The parser also preserves the V8.8 rule that missing selections are never invented to close a continuity gap.
+
+### Actual Yahoo Board screenshot validation
+
+The V8.9 parser was also run against OCR generated from the Yahoo Board screenshot used during development. It recognized **42/42 completed selections**, detected **overall pick 43** as the current clock, inferred **draft slot 5** from the Yahoo `You` column, found no continuity gaps, and rebuilt the slot-5 roster as **Puka Nacua, Drake London, and Chris Olave**.
