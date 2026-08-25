@@ -4,6 +4,8 @@
   else root.DraftForgeEngine=api.DraftForgeEngine;
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   const clone=x=>JSON.parse(JSON.stringify(x));
+  // 2026 NFL bye weeks (official schedule). Kept in-engine so GitHub Pages works offline.
+  const BYE_WEEKS={ARI:14,ATL:11,BAL:13,BUF:7,CAR:5,CHI:10,CIN:6,CLE:11,DAL:14,DEN:10,DET:6,GB:11,HOU:8,IND:13,JAX:7,KC:5,LAC:7,LAR:11,LV:13,MIA:6,MIN:6,NE:11,NO:8,NYG:8,NYJ:13,PHI:10,PIT:9,SEA:11,SF:8,TB:10,TEN:9,WAS:7};
   class DraftForgeEngine{
     constructor(players,league,slot=null){
       this.players=clone(players||[]);
@@ -40,6 +42,35 @@
     counts(list){const c={QB:0,RB:0,WR:0,TE:0,DST:0,K:0,DL:0,LB:0,DB:0};(list||[]).forEach(p=>c[p.pos]=(c[p.pos]||0)+1);return c}
     isComplete(){return this.complete||this.overall>this.maxPicks()||this.avail().length===0}
     favBonus(p){return (p.favoriteBonus||0)+(this.favorites[p.id]?8:0)}
+    byeWeek(p){if(!p)return null;const n=+p.bye||+BYE_WEEKS[p.team]||0;return n||null}
+    byeExposure(list=this.myPlayers()){
+      const out={};for(const p of list||[]){const w=this.byeWeek(p);if(!w)continue;if(!out[w])out[w]={week:w,total:0,core:0,positions:{QB:0,RB:0,WR:0,TE:0,DST:0,K:0}};out[w].total++;out[w].positions[p.pos]=(out[w].positions[p.pos]||0)+1;if(['QB','RB','WR','TE'].includes(p.pos))out[w].core++}return out
+    }
+    byeFit(p,list=this.myPlayers(),overall=this.overall){
+      const week=this.byeWeek(p);if(!week)return{week:null,adjustment:0,label:'—',cls:'neutral',text:'No NFL bye week mapped.'};
+      const exposure=this.byeExposure(list),same=exposure[week]||{total:0,core:0,positions:{}},samePos=same.positions[p.pos]||0,round=this.roundFor(overall),totalRounds=Math.max(1,this.totalRosterSize());
+      // Bye weeks should break close calls, not overrule a major talent/value edge in the opening rounds.
+      const stage=round<=3?.42:round<=6?.68:round<=9?.86:1;
+      let adj=0;
+      if(same.core===1)adj-=.7;else if(same.core===2)adj-=2.0;else if(same.core===3)adj-=3.8;else if(same.core>=4)adj-=5.8+(same.core-4)*.7;
+      // Same-bye backup QBs/TEs are especially inefficient because their replacement value disappears on the exact week you need it.
+      if(p.pos==='QB'&&samePos>0)adj-=this.hasSuperflex()?3.8:5.8;
+      else if(p.pos==='TE'&&samePos>0)adj-=3.5;
+      else if(['DST','K'].includes(p.pos)&&samePos>0)adj-=5.5;
+      else if(['RB','WR'].includes(p.pos)&&samePos>1)adj-=.75*(samePos-1);
+      // Once a roster already has a concentrated bye, give close alternatives with clean weeks a small diversification bump.
+      const peak=Object.values(exposure).reduce((m,x)=>Math.max(m,x.core||0),0);
+      if(same.core===0&&peak>=2)adj+=peak>=4?1.6:peak===3?1.1:.65;
+      // Bench-stage decisions should care a bit more about usable weekly coverage than early starter accumulation.
+      if(round>=Math.ceil(totalRounds*.60))adj*=1.12;
+      adj=Math.max(-8,Math.min(2,adj*stage));
+      adj=Math.round(adj*10)/10;
+      const label=adj<=-4?'AVOID BYE':adj<=-1.5?'BYE CONFLICT':adj<0?'MINOR OVERLAP':adj>=1?'BYE FIT+':'CLEAN';
+      const cls=adj<=-1.5?'bad':adj<0?'warn':adj>=.5?'good':'neutral';
+      const text=same.total?`Week ${week}: ${same.total} player${same.total===1?'':'s'} already on your roster (${same.core} core). Bye fit ${adj>0?'+':''}${adj.toFixed(1)}.`:`Week ${week}: no current roster overlap. Bye fit ${adj>0?'+':''}${adj.toFixed(1)}.`;
+      return{week,adjustment:adj,label,cls,text,overlap:same.total,coreOverlap:same.core,samePos}
+    }
+    byeAdjustment(p,list=this.myPlayers(),overall=this.overall){return this.byeFit(p,list,overall).adjustment}
     scoringMods(p){const sc=this.league.scoring||{};let m=0;if(['WR','RB','TE'].includes(p.pos))m+=((+sc.rec||0)-.5)*2.4;if(p.pos==='TE')m+=(+sc.tePremium||0)*5;if(p.pos==='QB')m+=((+sc.passTd||4)-4)*1.6+(25/(+sc.passYardsPerPoint||25)-1)*4;if(['RB','WR','TE'].includes(p.pos)&&(+sc.firstDown||0)>0)m+=(+sc.firstDown)*2;return m}
     candidateAllowed(p,list=this.myPlayers(),overall=this.overall){
       const c=this.counts(list),round=this.roundFor(overall),slots=this.league.slots||{},needQ=this.requiredQB(),total=this.totalRosterSize(),remaining=Math.max(0,total-list.length);
@@ -72,7 +103,7 @@
     nextPickSurvival(p){const base=this.marketSurvivalBaseline(p);if(base===null)return null;const tp=this.playerTurnPressure(p),pressureFactor=Math.max(.30,1-tp.risk*.62),tierFactor=tp.tierLeft<=1?.82:tp.tierLeft===2?.90:1;return Math.max(.02,Math.min(.98,base*pressureFactor*tierFactor))}
     turnPressureBonus(p){const surv=this.nextPickSurvival(p);if(surv===null)return 0;const tp=this.playerTurnPressure(p);let b=surv<.15?7:surv<.28?5:surv<.42?3:surv<.58?1:surv>.82?-2:0;b+=Math.min(3,tp.needTeams*.55);const ours=this.needBonus(p.pos);if(ours<3)b*=.55;return b}
     turnDecision(p){const surv=this.nextPickSurvival(p),tp=this.playerTurnPressure(p);if(surv===null)return{label:'NOW',cls:'neutral',risk:'—',text:'No next-pick forecast yet.'};const pct=Math.round(surv*100);if(pct<=20)return{label:'TAKE NOW',cls:'take',risk:tp.label,text:`Only ${pct}% projected survival; ${tp.needTeams} of ${tp.teams} intervening teams show ${p.pos} demand.`};if(pct<=42)return{label:'LEAN TAKE',cls:'lean',risk:tp.label,text:`${pct}% projected survival; waiting carries meaningful ${p.pos} risk.`};if(pct>=72)return{label:'CAN WAIT',cls:'wait',risk:tp.label,text:`${pct}% projected survival; only ${tp.needTeams} of ${tp.teams} intervening teams show strong ${p.pos} demand.`};return{label:'VALUE CALL',cls:'neutral',risk:tp.label,text:`${pct}% projected survival; balance value against your current roster need.`}}
-    score(p,list=this.myPlayers(),overall=this.overall){if(!this.candidateAllowed(p,list,overall))return-99;const fw=+this.league.favoriteWeight||0,rw=+this.league.riskWeight||1;let s=108-p.rank*.40+this.needBonus(p.pos,list,overall)+this.tierBonus(p)+this.qScarcity(p,list)+this.favBonus(p)*fw+this.scoringMods(p)+(p.marketAdjust||0)+(p.ceiling||3)*1.15-(p.risk||3)*rw;if(p.pos==='QB'&&this.counts(list).QB>=this.requiredQB())s-=this.hasSuperflex()?13:10;const reach=Math.max(0,p.rank-overall);if(reach>18)s-=Math.min(18,(reach-18)*.48);s+=this.turnPressureBonus(p);return Math.round(s*10)/10}
+    score(p,list=this.myPlayers(),overall=this.overall){if(!this.candidateAllowed(p,list,overall))return-99;const fw=+this.league.favoriteWeight||0,rw=+this.league.riskWeight||1;let s=108-p.rank*.40+this.needBonus(p.pos,list,overall)+this.tierBonus(p)+this.qScarcity(p,list)+this.favBonus(p)*fw+this.scoringMods(p)+(p.marketAdjust||0)+(p.ceiling||3)*1.15-(p.risk||3)*rw+this.byeAdjustment(p,list,overall);if(p.pos==='QB'&&this.counts(list).QB>=this.requiredQB())s-=this.hasSuperflex()?13:10;const reach=Math.max(0,p.rank-overall);if(reach>18)s-=Math.min(18,(reach-18)*.48);s+=this.turnPressureBonus(p);return Math.round(s*10)/10}
     recs(limit=30){return this.avail().filter(p=>this.candidateAllowed(p)).map(p=>({p,s:this.score(p)})).sort((a,b)=>b.s-a.s||a.p.rank-b.p.rank).slice(0,limit)}
     snapshot(){this.history.push(JSON.stringify({drafted:this.drafted,picks:this.picks,teams:this.teams,mine:this.mine,overall:this.overall,complete:this.complete}))}
     undo(){const h=this.history.pop();if(!h)return false;Object.assign(this,JSON.parse(h));return true}

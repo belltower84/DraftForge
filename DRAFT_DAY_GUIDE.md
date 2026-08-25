@@ -1,49 +1,38 @@
-# DraftForge V8.6 — Draft Day Guide
+# DraftForge V8.8 Draft Day Guide
 
-## Before the draft
+## Before the room opens
 
-- Open Yahoo in one window and DraftForge in another.
-- In DraftForge choose **Live Draft**.
-- Confirm the league setup and choose your actual Yahoo draft slot.
-- Click **Reset Live Draft** immediately before the room starts making real selections.
-- Open Screenshot Catch-Up once before the draft if you may use OCR, so you know where the control is.
+- Open Yahoo and DraftForge side by side.
+- Select **Live Draft**.
+- Confirm league size, scoring, roster slots, and your draft slot.
+- Do not press Reset Live Draft once the real draft has started unless you truly want to erase the current draft state.
 
-## Every opponent pick
+## Screenshot workflow
 
-1. Watch the Yahoo selection.
-2. Find that player in DraftForge.
-3. Click **Gone**.
-4. DraftForge advances exactly one real pick and recalculates the board.
+1. In Yahoo choose **Results → Round by Round**.
+2. Press `Win + Shift + S` and capture the results table.
+3. Press `Ctrl+V` anywhere in DraftForge.
+4. DraftForge opens Smart Screenshot Sync and begins reading the image automatically.
+5. Verify **KNOWN** and **NEW** rows.
+6. Press **Apply & Recommend**.
+7. DraftForge stores the picks locally and refreshes Best Move Now.
 
-## Your pick
+### First screenshot
+Include the whole draft so far. This establishes chronological pick memory.
 
-DraftForge will show **YOU'RE ON THE CLOCK**.
+### Later screenshots
+They may overlap older picks. DraftForge uses the overlap to continue from its existing memory and ignores selections it already knows.
 
-1. Review **Best Move Now** and the TAKE NOW / LEAN TAKE / CAN WAIT signal.
-2. Make the actual selection in Yahoo.
-3. Click **Draft** beside the same player in DraftForge.
-4. DraftForge stops and waits for the next Yahoo selection.
+## Manual live workflow
 
-## If you fall behind
+- Opponent pick: click **Gone**.
+- Your pick: make the selection in Yahoo, then click **Draft** in DraftForge.
+- Mistake: click **Undo**.
 
-### Fastest method
-Manually click **Gone** for the missed players in order.
+## Safety rule
 
-### Screenshot Catch-Up
-1. Press `Win + Shift + S`.
-2. Crop only Yahoo's recent draft-results panel.
-3. Open **Screenshot Catch-Up** in DraftForge.
-4. Press `Ctrl + V`.
-5. Click **Analyze Screenshot Locally**.
-6. Verify the detected players and pick numbers. Edit pick numbers if needed.
-7. Click **Apply Confirmed Picks**.
+DraftForge never deliberately fills a missing selection by guessing. If a screenshot does not provide enough overlap/continuity, it stops and asks for a more complete Yahoo Results capture.
 
-DraftForge will stop instead of inventing a player if there is a gap in the reviewed picks.
 
-## Emergency correction
-
-Use **Undo** to reverse the most recent applied selection, then enter the correct player.
-
-## Recommended rule
-
-Treat Yahoo as the source of truth. DraftForge is the decision engine and synchronized mirror. Make your actual selection in Yahoo first, then record it in DraftForge.
+## Bye-week logic
+DraftForge now uses the official 2026 NFL bye schedule. Treat the bye adjustment as a roster-construction tiebreaker, not a command to pass on an elite value. The engine intentionally weights bye conflicts lightly in the first three rounds and more heavily as the roster fills. Same-bye backup QBs and TEs are penalized more strongly because they cannot cover the starter during the bye.

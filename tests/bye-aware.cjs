@@ -1,0 +1,16 @@
+const players=require('../data/players.js');
+const presets=require('../data/presets.js');
+const {DraftForgeEngine}=require('../engine.js');
+const e=new DraftForgeEngine(players,presets['User Yahoo League'],3);
+const chase=players.find(p=>p.name==="Ja'Marr Chase");
+const gibbs=players.find(p=>p.name==='Jahmyr Gibbs');
+const lamb=players.find(p=>p.name==='CeeDee Lamb');
+if(e.byeWeek(chase)!==6) throw new Error('Chase bye should be Week 6');
+if(e.byeWeek(gibbs)!==6) throw new Error('Gibbs bye should be Week 6');
+if(e.byeWeek(lamb)!==14) throw new Error('Lamb bye should be Week 14');
+e.slot=3;e.choose(chase.id,3,true);
+const same=e.byeFit(gibbs,e.myPlayers(),40),clean=e.byeFit(lamb,e.myPlayers(),40);
+if(!(same.adjustment<clean.adjustment)) throw new Error(`same-bye fit should trail clean bye: ${same.adjustment} vs ${clean.adjustment}`);
+const exp=e.byeExposure(e.myPlayers());
+if(!exp[6]||exp[6].total!==1) throw new Error('Week 6 exposure should include Chase');
+console.log('PASS: bye mapping, exposure, and recommendation adjustment are active.');

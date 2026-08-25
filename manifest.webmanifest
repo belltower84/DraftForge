@@ -1,9 +1,9 @@
 {
-  "name": "DraftForge V8.6 Live Draft Mode",
+  "name": "DraftForge V8.8 Bye-Aware Live Draft",
   "short_name": "DraftForge",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#090b0e",
   "theme_color": "#0d0f12",
-  "description": "Live-draft-ready turn-aware fantasy football draft command center."
+  "description": "Screenshot-aware live draft assistant with persistent pick memory and turn-aware recommendations."
 }

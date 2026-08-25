@@ -1,93 +1,52 @@
-# DraftForge — Stress Test & GitHub Port Validation
+# DraftForge V8.7 Validation Report
 
-**Board refresh:** 2026-08-24  
-**Player pool:** 292  
-**Primary league focus:** Yahoo 12-team, full PPR, 4-point passing TD, 1 QB + 1 Superflex, 2 RB, 3 WR, 1 TE, FLEX, DST, 7 bench
+## Engine regression
+- 12/12 draft slots completed full simulated drafts.
+- Required roster construction remained valid across all 12 slots.
+- V8.6 live pick-by-pick flow still passes.
+- On-clock next-turn survival calculation remains active.
 
-## Original draft-day stress campaign
+## Screenshot-memory regression
+The supplied Yahoo **Results → Round by Round** screenshot was used to tune the V8.7 OCR pipeline.
 
-The pre-V8.5 draft engine was stress-tested before the turn-aware opponent-pressure layer was added:
+Browser-equivalent preprocessing plus OCR resolved all 12 visible Round 1 selections:
+1. Jahmyr Gibbs
+2. Bijan Robinson
+3. Ja'Marr Chase
+4. Puka Nacua
+5. Christian McCaffrey
+6. Jonathan Taylor
+7. Amon-Ra St. Brown
+8. James Cook III
+9. Jaxon Smith-Njigba
+10. Chase Brown
+11. CeeDee Lamb
+12. Saquon Barkley
 
-- **Phase A:** 120 complete user-league drafts — 10 simulations from every draft slot.
-- **Phase B:** 24 additional complete all-slot regression drafts after reducing an over-aggressive tier-cliff bonus.
-- **Platform regression:** 25 additional complete drafts across Yahoo, ESPN, Sleeper, NFL Fantasy and DraftForge presets.
-- **Total:** 169 complete automated drafts.
+The raw OCR contained several distortions (for example Barkley, McCaffrey, Nacua, Chase and Robinson were not perfectly transcribed). V8.7 resolves those rows using Yahoo's abbreviated-name pattern plus position/team metadata rather than exact-name OCR alone.
 
-### Fixes produced by testing
+## Cumulative memory test
+- Existing picks are persisted in localStorage.
+- An overlapping later screenshot correctly marks prior selections as KNOWN.
+- Only new selections are queued for application.
+- Pick alignment continues from the latest remembered overlapping player.
+- Missing sequential picks stop the sync instead of being guessed.
 
-1. Tier scarcity was reduced to a tiebreaker rather than a top-of-board override.
-2. Normal one-TE leagues received a permanent TE cap.
-3. Remaining picks are reserved so required roster positions cannot be stranded at the end.
-4. K/DST are protected until the end unless remaining-pick math requires them.
-5. QB3 is optional, late-only, and must have legitimate starter value.
-
-### User-league Phase A results
-
-- Required-position / roster-validity failures: **0**
-- QB: average **2.00**, range 2–2
-- RB: average **5.18**, range 4–7
-- WR: average **6.88**, range 5–8
-- TE: average **1.93**, range 1–2
-- DST: average **1.00**, range 1–1
-
-Starter timing:
-
-- QB2: average **Round 3.19**, range 2–6
-- RB2: average **Round 5.66**, range 2–7
-- WR3: average **Round 6.89**, range 3–9
-- TE1: average **Round 7.88**, range 4–10
-
-After the tier-cliff adjustment, the 24 all-slot regression drafts again produced **zero roster-validity failures**. The corrected 1.01 sanity check put Josh Allen at the top of the raw engine recommendation order.
-
-### Platform regression
-
-- Yahoo: 5/5 valid
-- ESPN: 5/5 valid
-- Sleeper Superflex: 5/5 valid
-- NFL Fantasy: 5/5 valid
-- DraftForge Demo Superflex: 5/5 valid
-
-## V8.5 Turn-Aware GitHub port validation
-
-The modular GitHub build was re-tested after separating the engine, player data, presets and UI.
-
-Command:
-
+## Commands
 ```bash
 node tests/smoke.cjs
+node tests/live-engine.cjs
+node tests/screenshot-sync.cjs
 ```
 
-Result:
+All tests passed on the packaged build.
 
-- **12/12** draft slots completed a full draft.
-- **12/12** finished with valid required rosters.
-- Opening recommendation sanity check:
-  - Josh Allen — **122.9**
-  - Drake Maye — **122.5**
-  - Lamar Jackson — **122.1**
-  - Jahmyr Gibbs — **121.0**
-  - Ja'Marr Chase — **120.9**
-
-## V8.5 addition: turn-aware opponent pressure
-
-V8.5 adds a second layer to the old market-only survival estimate. Before recommending that you wait, the engine now checks:
-
-- every intervening snake-draft pick before your next turn,
-- each opponent roster's positional needs,
-- market proximity for the player at each intervening pick,
-- how many players remain in the same position/tier,
-- and whether the position is actually important to your own roster build.
-
-That pressure changes both the displayed survival percentage and the recommendation score.
-
-
-## V8.6 Live Draft Mode validation
-
-V8.6 preserves the V8.5 engine and adds a separate real-draft workflow. Live mode never calls opponent simulation after a user selection. Each Yahoo pick must be recorded explicitly with **Gone** or **Draft**.
-
-Additional checks:
-
-- `node tests/smoke.cjs` — **12/12** full mock drafts completed with valid required rosters.
-- `node tests/live-engine.cjs` — verified manual pick-by-pick progression, one-pick advancement, Undo, and a non-null next-turn survival forecast while the user is on the clock.
-- Corrected the turn forecast so the engine looks to the user's **following** snake turn while the user is currently drafting, rather than treating the current selection as the future turn.
-- Screenshot catch-up no longer fabricates missing draft selections. Application stops at the first gap.
+## V8.8 bye-aware regression
+- Official 2026 team bye mapping loaded for all 32 NFL teams.
+- Bye exposure updates from the user's roster state.
+- Same-bye candidates receive a dynamic score adjustment; clean alternatives can receive a small diversity bump when the roster is already concentrated.
+- Same-bye backup QB/TE decisions receive stronger penalties.
+- Early-round stage scaling protects elite value from excessive bye-week weighting.
+- Lineup Optimizer returns zero projection with BYE status on the mapped bye week.
+- `tests/bye-aware.cjs`: PASS.
+- Existing full-draft, live-mode, and screenshot-memory tests: PASS.
