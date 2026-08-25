@@ -79,3 +79,15 @@ V8.5 adds a second layer to the old market-only survival estimate. Before recomm
 - and whether the position is actually important to your own roster build.
 
 That pressure changes both the displayed survival percentage and the recommendation score.
+
+
+## V8.6 Live Draft Mode validation
+
+V8.6 preserves the V8.5 engine and adds a separate real-draft workflow. Live mode never calls opponent simulation after a user selection. Each Yahoo pick must be recorded explicitly with **Gone** or **Draft**.
+
+Additional checks:
+
+- `node tests/smoke.cjs` — **12/12** full mock drafts completed with valid required rosters.
+- `node tests/live-engine.cjs` — verified manual pick-by-pick progression, one-pick advancement, Undo, and a non-null next-turn survival forecast while the user is on the clock.
+- Corrected the turn forecast so the engine looks to the user's **following** snake turn while the user is currently drafting, rather than treating the current selection as the future turn.
+- Screenshot catch-up no longer fabricates missing draft selections. Application stops at the first gap.
