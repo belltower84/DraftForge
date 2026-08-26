@@ -1,8 +1,8 @@
-# DraftForge V8.9 — Board Snapshot Live Draft
+# DraftForge V8.10 — Dynamic Board Reader
 
-DraftForge V8.9 turns the Yahoo **Board** screenshot into the live-draft input. The intended draft-day workflow is one screenshot per round, taken when you are on the clock.
+DraftForge V8.10 turns the Yahoo **Board** screenshot into the live-draft input. The intended draft-day workflow is one screenshot per round, taken when you are on the clock.
 
-## What V8.9 does from one Yahoo Board screenshot
+## What V8.10 does from one Yahoo Board screenshot
 
 - Detects the 12 draft columns and snake-draft pick order.
 - Detects the current `ON THE CLOCK` cell.
@@ -56,3 +56,8 @@ No server is required for Board Snapshot mode. Tesseract.js is loaded in the bro
 ## Safety behavior
 
 DraftForge does **not** fill a missing board cell by inventing a player. A snapshot is auto-applied only when the new selections form a continuous, conflict-free sequence from the last saved pick to the detected current pick.
+
+
+## V8.10 dynamic Yahoo board detection
+
+V8.10 no longer assumes a 12-team grid. The board reader tests plausible league sizes and chooses the geometry that reconstructs the strongest continuous pick sequence. On a fresh live draft, it can automatically update DraftForge from 12 teams to 14 teams and detect the user's Yahoo column. For best results, zoom Yahoo out until every team column is visible in the screenshot.

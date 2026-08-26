@@ -167,6 +167,33 @@
     if(!currentPick)currentPick=(picks.reduce((m,x)=>Math.max(m,x.overall),0)||0)+1;
     return{width,height,teams,rounds,teamNames,userSlot,currentPick,picks,cells,geometry:{left,right,colW,rowStart,rowStep}};
   }
+
+  function snapshotQuality(snapshot){
+    if(!snapshot)return -1e9;
+    const pickSet=new Set((snapshot.picks||[]).map(x=>x.overall));
+    let prefix=0;while(pickSet.has(prefix+1))prefix++;
+    const current=+snapshot.currentPick||prefix+1;
+    let gaps=0;for(let n=1;n<current;n++)if(!pickSet.has(n))gaps++;
+    const named=(snapshot.teamNames||[]).filter((x,i)=>x&&x!==`Team ${i+1}`).length;
+    const exactCurrent=current===prefix+1;
+    // Continuity is the strongest signal. A correct Yahoo grid should reconstruct
+    // every completed pick from 1 through the ON THE CLOCK cell with no gaps.
+    return prefix*40+(snapshot.picks?.length||0)*3+named*2+(snapshot.userSlot?18:0)+(exactCurrent?80:0)-gaps*55;
+  }
+  function detectYahooBoardSnapshot(inputWords,players,options={}){
+    const preferred=+options.preferredTeams||0;
+    const base=(options.candidates||[8,10,12,14,16]).map(Number).filter(n=>n>=6&&n<=20);
+    const candidates=Array.from(new Set([preferred,...base].filter(Boolean)));
+    const attempts=candidates.map(teams=>{
+      const snapshot=parseYahooBoardWords(inputWords,players,{...options,teams});
+      return{teams,snapshot,quality:snapshotQuality(snapshot)};
+    }).sort((a,b)=>b.quality-a.quality);
+    const best=attempts[0];
+    if(!best)return parseYahooBoardWords(inputWords,players,options);
+    best.snapshot.detection={quality:best.quality,attempts:attempts.map(x=>({teams:x.teams,quality:x.quality,picks:x.snapshot.picks.length,currentPick:x.snapshot.currentPick,userSlot:x.snapshot.userSlot}))};
+    return best.snapshot;
+  }
+
   function reconcileBoardSnapshot(snapshot,existingPicks=[],options={}){
     const byOverall=new Map((existingPicks||[]).map(x=>[x.overall,x])),byId=new Map((existingPicks||[]).map(x=>[x.id,x])),incoming=new Map((snapshot?.picks||[]).map(x=>[x.overall,x]));
     const conflicts=[],confirmed=[],newPicks=[],unresolved=[];
@@ -178,5 +205,5 @@
     const safe=conflicts.length===0&&unresolved.length===0&&newPicks.every((p,i)=>p.overall>=start&&(i===0?p.overall===start:newPicks[i-1].overall+1===p.overall));
     return{safe,conflicts,confirmed,newPicks,unresolved,currentPick:current,userSlot:snapshot?.userSlot||null,teamNames:snapshot?.teamNames||[]};
   }
-  return{normalizeName,levenshtein,similarity,detectPos,detectTeam,scorePlayerChunk,playersFromYahooOcrText,alignDetectedPlayers,cleanOcrWords,boardOverall,boardColumnForOverall,matchBoardCell,parseYahooBoardWords,reconcileBoardSnapshot};
+  return{normalizeName,levenshtein,similarity,detectPos,detectTeam,scorePlayerChunk,playersFromYahooOcrText,alignDetectedPlayers,cleanOcrWords,boardOverall,boardColumnForOverall,matchBoardCell,parseYahooBoardWords,snapshotQuality,detectYahooBoardSnapshot,reconcileBoardSnapshot};
 });

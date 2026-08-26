@@ -2,7 +2,7 @@ const APP_KEY='draftforge-v8-6-live-state'; // keep the V8.6 key so existing liv
 const LEGACY_APP_KEY='draftforge-v8-5-turn-aware-state';
 const MODE_KEY='draftforge-v8-6-mode';
 const PROFILE_KEY='draftforge-v8-5-profile';
-const BOARD_META_KEY='draftforge-v8-9-board-meta';
+const BOARD_META_KEY='draftforge-v8-10-board-meta';
 let engine;
 let draftMode='mock';
 let filter='ALL';
@@ -151,7 +151,7 @@ function renderScreenshotReview(){
   }
   reviewPicks.sort((a,b)=>a.pick-b.pick);
   qs('reviewPicks').innerHTML=reviewPicks.length?reviewPicks.map((x,i)=>`<div class="review-item ${x.known?'known-row':''}"><input class="review-pick-number" type="number" min="1" value="${x.pick}" disabled><span><b>${escapeHtml(x.matched?.name||x.name||'Unresolved')}</b><small>${escapeHtml(teamLabel(x.team||engine.teamForOverall(x.pick)))} • ${x.known?'confirmed':'NEW'} • ${Math.round((x.confidence||0)*100)}% confidence</small></span><span class="sync-status ${x.known?'known':'new'}">${x.known?'KNOWN':'NEW'}</span></div>`).join(''):'<div class="subtle">No board picks analyzed yet.</div>';
-  if(qs('screenshotStatus'))qs('screenshotStatus').textContent=boardSnapshot?`Board detected • current pick ${boardSnapshot.currentPick||'unknown'} • ${boardSnapshot.picks.length} player cells recognized.`:`${engine.picks.length} picks currently stored in DraftForge memory.`;
+  if(qs('screenshotStatus'))qs('screenshotStatus').textContent=boardSnapshot?`Board detected • ${boardSnapshot.teams}-team league • current pick ${boardSnapshot.currentPick||'unknown'} • ${boardSnapshot.picks.length} player cells recognized.`:`${engine.picks.length} picks currently stored in DraftForge memory.`;
 }
 function removeScreenshot(i){const f=screenshotFiles[i];if(f?._previewUrl)URL.revokeObjectURL(f._previewUrl);screenshotFiles.splice(i,1);reviewPicks=[];boardSnapshot=null;renderScreenshotReview()}
 function normalizeName(s=''){return s.toLowerCase().replace(/[^a-z0-9]/g,'')}
@@ -187,8 +187,10 @@ async function analyzeScreenshots(){
     const result=await worker.recognize(processed,{}, {text:true,tsv:true});
     let ocrWords=result?.data?.words||[];if(!ocrWords.length&&result?.data?.tsv)ocrWords=wordsFromTsv(result.data.tsv);
     if(!ocrWords.length)throw new Error('OCR returned text without word locations');
-    boardSnapshot=DraftForgeScreenshotSync.parseYahooBoardWords(ocrWords,DRAFTFORGE_PLAYERS,{width:processed.width,height:processed.height,teams:engine.teamCount(),rounds:Math.min(18,engine.totalRosterSize())});
-    if(boardSnapshot.userSlot&&!engine.slot){engine.slot=boardSnapshot.userSlot;if(qs('slotSelect'))qs('slotSelect').value=engine.slot}
+    boardSnapshot=DraftForgeScreenshotSync.detectYahooBoardSnapshot(ocrWords,DRAFTFORGE_PLAYERS,{width:processed.width,height:processed.height,preferredTeams:engine.teamCount(),candidates:[8,10,12,14,16],rounds:Math.min(18,engine.totalRosterSize())});
+    if(boardSnapshot.teams!==engine.teamCount()&&engine.picks.length===0){engine.league.teams=boardSnapshot.teams;engine.ensureTeams();rebuildSlotSelect();showToast(`Yahoo Board detected a ${boardSnapshot.teams}-team league. DraftForge updated automatically.`)}
+    if(boardSnapshot.userSlot&&engine.picks.length===0){engine.slot=boardSnapshot.userSlot;rebuildSlotSelect();if(qs('slotSelect'))qs('slotSelect').value=engine.slot}
+    else if(boardSnapshot.userSlot&&!engine.slot){engine.slot=boardSnapshot.userSlot;if(qs('slotSelect'))qs('slotSelect').value=engine.slot}
     const rec=DraftForgeScreenshotSync.reconcileBoardSnapshot(boardSnapshot,engine.picks,{nextOverall:engine.overall});
     reviewPicks=boardSnapshot.picks.map(p=>({pick:p.overall,team:p.team,name:p.player.name,matched:p.player,known:engine.picks.some(x=>x.overall===p.overall&&x.id===p.id),confidence:p.confidence}));
     renderScreenshotReview();
@@ -201,6 +203,7 @@ function applyBoardSnapshot(auto=false){
   if(!boardSnapshot)return showToast('Analyze a Yahoo Board screenshot first.');
   const rec=DraftForgeScreenshotSync.reconcileBoardSnapshot(boardSnapshot,engine.picks,{nextOverall:engine.overall});
   if(rec.conflicts.length||rec.unresolved.length){renderScreenshotReview();return showToast('DraftForge will not guess. Resolve the highlighted board gap with a clearer screenshot.')}
+  if(boardSnapshot.teams!==engine.teamCount())return showToast(`Yahoo Board looks like a ${boardSnapshot.teams}-team league, but DraftForge memory is ${engine.teamCount()} teams. Start a fresh live draft before applying.`);
   if(boardSnapshot.userSlot&&engine.slot&&boardSnapshot.userSlot!==engine.slot)return showToast(`Yahoo Board looks like slot ${boardSnapshot.userSlot}, but DraftForge is set to slot ${engine.slot}. Fix the draft slot before applying.`);
   if(boardSnapshot.userSlot&&!engine.slot)engine.slot=boardSnapshot.userSlot;
   if(boardSnapshot.teamNames?.length)boardMeta.teamNames=boardSnapshot.teamNames.map((x,i)=>x&&x!==`Team ${i+1}`?x:(boardMeta.teamNames?.[i]||`Team ${i+1}`));
@@ -219,7 +222,7 @@ function applyBoardSnapshot(auto=false){
 function applyReviewedPicks(){applyBoardSnapshot(false)}
 function openYahooSync(){openModal('yahooModal')}
 async function syncYahooNow(){try{const leagueId=engine.league.leagueId||'846890',r=await fetch(`/api/yahoo/picks?leagueId=${encodeURIComponent(leagueId)}`);if(!r.ok)throw new Error('Yahoo server not configured');const data=await r.json();let applied=0;for(const x of data.picks||[]){const p=fuzzyPlayer(x.name);if(p&&!engine.drafted[p.id]){engine.choose(p.id,engine.teamForOverall(engine.overall),engine.teamForOverall(engine.overall)===engine.slot);applied++}}save();render();showToast(`Yahoo sync applied ${applied} new picks.`)}catch{showToast('Yahoo server sync is not configured on this deployment.')}}
-async function copyDraftState(){const payload=JSON.stringify({version:'8.9',mode:draftMode,overall:engine.overall,slot:engine.slot,picks:engine.picks.map(x=>({...x,name:engine.pby(x.id)?.name}))},null,2);try{await navigator.clipboard.writeText(payload);showToast('Draft state copied.')}catch{prompt('Copy draft state:',payload)}}
+async function copyDraftState(){const payload=JSON.stringify({version:'8.10',mode:draftMode,overall:engine.overall,slot:engine.slot,picks:engine.picks.map(x=>({...x,name:engine.pby(x.id)?.name}))},null,2);try{await navigator.clipboard.writeText(payload);showToast('Draft state copied.')}catch{prompt('Copy draft state:',payload)}}
 window.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.modal.open').forEach(m=>closeModal(m.id))});
 window.addEventListener('paste',handleScreenshotPaste);
 window.addEventListener('DOMContentLoaded',boot);

@@ -1,4 +1,4 @@
-# DraftForge V8.9 Draft Day Guide
+# DraftForge V8.10 Draft Day Guide
 
 ## Before the room opens
 
@@ -6,7 +6,7 @@
 2. Open DraftForge in another browser window or monitor.
 3. Select **Live Draft**.
 4. Confirm the league settings.
-5. Set your draft slot if you know it. V8.9 can also infer it from Yahoo's `You` board column.
+5. Set your draft slot if you know it. V8.10 can also infer it from Yahoo's `You` board column.
 6. Press **Reset Live Draft** once before selections begin.
 
 ## Once per round
@@ -45,4 +45,9 @@ Take another board screenshot. Do not force a bad sync just to save a few second
 
 ## Emergency manual workflow
 
-The old Draft/Gone controls remain available as a fallback. They should not be needed during normal V8.9 operation.
+The old Draft/Gone controls remain available as a fallback. They should not be needed during normal V8.10 operation.
+
+
+## Screenshot standard for V8.10
+
+Before taking the snip, zoom Yahoo so every team column is visible at once. Capture the entire draft board, including the team headers, completed player tiles, ON THE CLOCK tile, and YOUR TEAM panel. DraftForge will dynamically determine whether the board is 12-team, 14-team, or another supported size.
