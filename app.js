@@ -177,27 +177,56 @@ function wordsFromTsv(tsv=''){
   const lines=String(tsv||'').split(/\r?\n/);if(lines.length<2)return[];const hdr=lines.shift().split('\t'),idx=Object.fromEntries(hdr.map((x,i)=>[x,i])),out=[];
   for(const line of lines){if(!line)continue;const a=line.split('\t'),text=String(a[idx.text]||'').trim();if(!text)continue;const left=+a[idx.left]||0,top=+a[idx.top]||0,width=+a[idx.width]||0,height=+a[idx.height]||0;out.push({text,confidence:+a[idx.conf]||0,bbox:{x0:left,y0:top,x1:left+width,y1:top+height}})}return out;
 }
+async function sourceCanvasFromFile(file){
+  const bmp=await createImageBitmap(file),c=document.createElement('canvas');c.width=bmp.width;c.height=bmp.height;const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(bmp,0,0);try{bmp.close?.()}catch{}return c;
+}
+function ocrWordsFromResult(result){let words=result?.data?.words||[];if(!words.length&&result?.data?.tsv)words=wordsFromTsv(result.data.tsv);return words||[]}
+async function recognizeCanvasWords(worker,canvas,psm='11'){
+  await worker.setParameters({tessedit_pageseg_mode:String(psm),preserve_interword_spaces:'1'});
+  const result=await worker.recognize(canvas,{}, {text:true,tsv:true});return ocrWordsFromResult(result);
+}
+async function detectYahooHeaders(worker,sourceCanvas,grid){
+  const names=Array.from({length:grid.teams},(_,i)=>`Team ${i+1}`),header=DraftForgeBoardVision.makeHeaderCanvas(sourceCanvas,grid);if(!header)return{teamNames:names,userSlot:null};
+  try{
+    const words=await recognizeCanvasWords(worker,header.canvas,'7'),groups=Array.from({length:grid.teams},()=>[]);
+    for(const w of words){const b=w.bbox||{x0:w.left||0,x1:(w.left||0)+(w.width||0)},cx=header.x0+((+b.x0+(+b.x1||+b.x0))/2)/header.scale;let col=0,best=1e9;grid.colCenters.forEach((v,i)=>{const d=Math.abs(v-cx);if(d<best){best=d;col=i}});const text=String(w.text||'').replace(/^[^a-z0-9]+|[^a-z0-9.]+$/ig,'').trim();if(text)groups[col].push(text)}
+    let userSlot=null,userScore=0;groups.forEach((g,i)=>{const text=g.join(' ').replace(/\s+/g,' ').trim();if(text)names[i]=text.slice(0,24);const n=normalizeName(text),score=Math.max(n.includes('you')?1:0,DraftForgeScreenshotSync.similarity(n,'you'),DraftForgeScreenshotSync.similarity(n,'vou'));if(score>userScore&&score>=.56){userScore=score;userSlot=i+1;names[i]='You'}});return{teamNames:names,userSlot};
+  }catch(e){console.warn('Header OCR fallback',e);return{teamNames:names,userSlot:null}}
+}
+async function readYahooTiles(worker,sourceCanvas,grid,nextOverall){
+  const existingIds=new Set(engine.picks.map(x=>x.id)),toRead=grid.tiles.filter(t=>!t.clock&&t.overall>=nextOverall&&t.overall<grid.currentPick).sort((a,b)=>a.overall-b.overall),resolved=new Map(),rawChunks=new Map();
+  if(!toRead.length)return{picks:[],cells:[],unresolvedTiles:[],firstPassCount:0,secondPassCount:0};
+  const pass1=DraftForgeBoardVision.makeTileComposite(sourceCanvas,toRead,{patchW:330,patchH:210,gap:18,mode:'distance'}),words1=await recognizeCanvasWords(worker,pass1.canvas,'11'),chunks1=DraftForgeBoardVision.chunksFromOcrWords(words1,pass1),seen=new Set(existingIds);
+  toRead.forEach((tile,i)=>{const chunk=`${tile.pos||''} ${chunks1[i]||''}`.trim();rawChunks.set(tile.overall,chunk);const m=DraftForgeScreenshotSync.matchBoardCell(chunk,DRAFTFORGE_PLAYERS,tile.overall,seen);if(m?.accepted){seen.add(m.player.id);resolved.set(tile.overall,{tile,match:m,chunk})}});
+  let unresolved=toRead.filter(t=>!resolved.has(t.overall)),secondPassCount=0;
+  if(unresolved.length){
+    qs('screenshotStatus').textContent=`High-resolution retry on ${unresolved.length} unclear tile${unresolved.length===1?'':'s'}…`;
+    const pass2=DraftForgeBoardVision.makeTileComposite(sourceCanvas,unresolved,{patchW:430,patchH:280,gap:22,mode:'luma'}),words2=await recognizeCanvasWords(worker,pass2.canvas,'11'),chunks2=DraftForgeBoardVision.chunksFromOcrWords(words2,pass2);secondPassCount=unresolved.length;
+    unresolved.forEach((tile,i)=>{const chunk=`${tile.pos||''} ${rawChunks.get(tile.overall)||''} ${chunks2[i]||''}`.replace(/\s+/g,' ').trim(),m=DraftForgeScreenshotSync.matchBoardCell(chunk,DRAFTFORGE_PLAYERS,tile.overall,seen);rawChunks.set(tile.overall,chunk);if(m?.accepted){seen.add(m.player.id);resolved.set(tile.overall,{tile,match:m,chunk})}});
+  }
+  unresolved=toRead.filter(t=>!resolved.has(t.overall));
+  const picks=[...resolved.values()].map(({tile,match,chunk})=>({overall:tile.overall,team:tile.col+1,id:match.player.id,player:match.player,confidence:match.confidence,raw:chunk})).sort((a,b)=>a.overall-b.overall),cells=toRead.map(tile=>{const r=resolved.get(tile.overall);return r?{overall:tile.overall,team:tile.col+1,round:tile.round,col:tile.col,accepted:true,player:r.match.player,confidence:r.match.confidence,raw:r.chunk}:{overall:tile.overall,team:tile.col+1,round:tile.round,col:tile.col,accepted:false,raw:rawChunks.get(tile.overall)||'',pos:tile.pos}});
+  return{picks,cells,unresolvedTiles:unresolved,firstPassCount:toRead.length,secondPassCount};
+}
 async function analyzeScreenshots(){
   if(!screenshotFiles.length)return showToast('Paste or choose a Yahoo Board screenshot first.');
   let worker;try{worker=await getOcrWorker()}catch{return showToast('Browser OCR could not load. Check internet access and try again.')}
   const button=qs('analyzeScreenshotButton');if(button){button.disabled=true;button.textContent='Reading Yahoo Board…'}
-  qs('screenshotStatus').textContent='Reading the Yahoo Board grid…';
+  qs('screenshotStatus').textContent='Finding Yahoo player tiles…';
   try{
-    const processed=await preprocessYahooBoardScreenshot(screenshotFiles[0]);
-    const result=await worker.recognize(processed,{}, {text:true,tsv:true});
-    let ocrWords=result?.data?.words||[];if(!ocrWords.length&&result?.data?.tsv)ocrWords=wordsFromTsv(result.data.tsv);
-    if(!ocrWords.length)throw new Error('OCR returned text without word locations');
-    boardSnapshot=DraftForgeScreenshotSync.detectYahooBoardSnapshot(ocrWords,DRAFTFORGE_PLAYERS,{width:processed.width,height:processed.height,preferredTeams:engine.teamCount(),candidates:[8,10,12,14,16],rounds:Math.min(18,engine.totalRosterSize())});
-    if(boardSnapshot.teams!==engine.teamCount()&&engine.picks.length===0){engine.league.teams=boardSnapshot.teams;engine.ensureTeams();rebuildSlotSelect();showToast(`Yahoo Board detected a ${boardSnapshot.teams}-team league. DraftForge updated automatically.`)}
-    if(boardSnapshot.userSlot&&engine.picks.length===0){engine.slot=boardSnapshot.userSlot;rebuildSlotSelect();if(qs('slotSelect'))qs('slotSelect').value=engine.slot}
-    else if(boardSnapshot.userSlot&&!engine.slot){engine.slot=boardSnapshot.userSlot;if(qs('slotSelect'))qs('slotSelect').value=engine.slot}
+    const sourceCanvas=await sourceCanvasFromFile(screenshotFiles[0]),grid=DraftForgeBoardVision.detectTileGrid(sourceCanvas,{preferredTeams:engine.teamCount()});
+    if(!grid.ok)throw new Error(grid.reason||'Yahoo tile grid not found');
+    qs('screenshotStatus').textContent=`${grid.teams} columns • ${grid.tiles.length} Yahoo tiles found • reading drafted players…`;
+    if(grid.teams!==engine.teamCount()&&engine.picks.length===0){engine.league.teams=grid.teams;engine.ensureTeams();rebuildSlotSelect();showToast(`Yahoo Board detected a ${grid.teams}-team league. DraftForge updated automatically.`)}
+    const headers=await detectYahooHeaders(worker,sourceCanvas,grid),read=await readYahooTiles(worker,sourceCanvas,grid,engine.overall),userSlot=headers.userSlot||engine.slot||null;
+    if(headers.userSlot&&engine.picks.length===0){engine.slot=headers.userSlot;rebuildSlotSelect();if(qs('slotSelect'))qs('slotSelect').value=engine.slot}
+    boardSnapshot={width:sourceCanvas.width,height:sourceCanvas.height,teams:grid.teams,rounds:grid.rows,teamNames:headers.teamNames,userSlot,currentPick:grid.currentPick,picks:read.picks,cells:read.cells,vision:{tiles:grid.tiles.length,completedTiles:grid.tiles.filter(t=>!t.clock&&t.overall<grid.currentPick).length,newTiles:read.firstPassCount,retried:read.secondPassCount,unresolved:read.unresolvedTiles.map(t=>t.overall)}};
     const rec=DraftForgeScreenshotSync.reconcileBoardSnapshot(boardSnapshot,engine.picks,{nextOverall:engine.overall});
-    reviewPicks=boardSnapshot.picks.map(p=>({pick:p.overall,team:p.team,name:p.player.name,matched:p.player,known:engine.picks.some(x=>x.overall===p.overall&&x.id===p.id),confidence:p.confidence}));
-    renderScreenshotReview();
+    reviewPicks=boardSnapshot.picks.map(p=>({pick:p.overall,team:p.team,name:p.player.name,matched:p.player,known:engine.picks.some(x=>x.overall===p.overall&&x.id===p.id),confidence:p.confidence}));renderScreenshotReview();
     if(rec.safe){applyBoardSnapshot(true);return}
     const msg=rec.conflicts.length?`${rec.conflicts.length} draft-state conflict${rec.conflicts.length===1?'':'s'} need review.`:rec.unresolved.length?`Could not confidently read pick${rec.unresolved.length===1?'':'s'} ${rec.unresolved.join(', ')}.`:'Board needs review.';showToast(msg);
-  }catch(e){console.error(e);boardSnapshot=null;reviewPicks=[];renderScreenshotReview();showToast('Board OCR failed. Capture the full Yahoo Board like the example screenshot.');qs('screenshotStatus').textContent='OCR failed; DraftForge memory was not changed.'}
-  finally{if(button){button.disabled=false;button.textContent='Analyze Again'}}
+  }catch(e){console.error(e);boardSnapshot=null;reviewPicks=[];renderScreenshotReview();showToast('Board reader failed. Keep every Yahoo team column visible and capture the full Board.');qs('screenshotStatus').textContent=`Board read failed: ${e?.message||'unknown error'}. DraftForge memory was not changed.`}
+  finally{try{await worker?.setParameters({tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'})}catch{}if(button){button.disabled=false;button.textContent='Analyze Again'}}
 }
 function applyBoardSnapshot(auto=false){
   if(!boardSnapshot)return showToast('Analyze a Yahoo Board screenshot first.');
@@ -222,7 +251,7 @@ function applyBoardSnapshot(auto=false){
 function applyReviewedPicks(){applyBoardSnapshot(false)}
 function openYahooSync(){openModal('yahooModal')}
 async function syncYahooNow(){try{const leagueId=engine.league.leagueId||'846890',r=await fetch(`/api/yahoo/picks?leagueId=${encodeURIComponent(leagueId)}`);if(!r.ok)throw new Error('Yahoo server not configured');const data=await r.json();let applied=0;for(const x of data.picks||[]){const p=fuzzyPlayer(x.name);if(p&&!engine.drafted[p.id]){engine.choose(p.id,engine.teamForOverall(engine.overall),engine.teamForOverall(engine.overall)===engine.slot);applied++}}save();render();showToast(`Yahoo sync applied ${applied} new picks.`)}catch{showToast('Yahoo server sync is not configured on this deployment.')}}
-async function copyDraftState(){const payload=JSON.stringify({version:'8.10',mode:draftMode,overall:engine.overall,slot:engine.slot,picks:engine.picks.map(x=>({...x,name:engine.pby(x.id)?.name}))},null,2);try{await navigator.clipboard.writeText(payload);showToast('Draft state copied.')}catch{prompt('Copy draft state:',payload)}}
+async function copyDraftState(){const payload=JSON.stringify({version:'8.11',mode:draftMode,overall:engine.overall,slot:engine.slot,picks:engine.picks.map(x=>({...x,name:engine.pby(x.id)?.name}))},null,2);try{await navigator.clipboard.writeText(payload);showToast('Draft state copied.')}catch{prompt('Copy draft state:',payload)}}
 window.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.modal.open').forEach(m=>closeModal(m.id))});
 window.addEventListener('paste',handleScreenshotPaste);
 window.addEventListener('DOMContentLoaded',boot);
