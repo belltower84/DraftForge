@@ -1,9 +1,9 @@
 {
-  "name": "DraftForge V8.11 Tile Vision Board Reader",
+  "name": "DraftForge V8.12 Results Live Sync",
   "short_name": "DraftForge",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#090b0e",
   "theme_color": "#0d0f12",
-  "description": "One-screenshot-per-round Yahoo Board parser with persistent league roster memory, availability tracking, bye-aware scoring, and turn-aware recommendations."
+  "description": "Yahoo Results screenshot sync with editable draft tracker, persistent roster memory, availability tracking, bye-aware scoring, and turn-aware recommendations."
 }

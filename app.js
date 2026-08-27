@@ -2,13 +2,13 @@ const APP_KEY='draftforge-v8-6-live-state'; // keep the V8.6 key so existing liv
 const LEGACY_APP_KEY='draftforge-v8-5-turn-aware-state';
 const MODE_KEY='draftforge-v8-6-mode';
 const PROFILE_KEY='draftforge-v8-5-profile';
-const BOARD_META_KEY='draftforge-v8-10-board-meta';
+const BOARD_META_KEY='draftforge-v8-12-results-meta';
 let engine;
 let draftMode='mock';
 let filter='ALL';
 let screenshotFiles=[];
 let reviewPicks=[];
-let boardSnapshot=null;
+let resultsSnapshot=null;
 let boardMeta={teamNames:[],lastSync:null};
 let ocrWorkerPromise=null;
 const NFL_TEAMS=['ARI','ATL','BAL','BUF','CAR','CHI','CIN','CLE','DAL','DEN','DET','GB','HOU','IND','JAX','KC','LAC','LAR','LV','MIA','MIN','NE','NO','NYG','NYJ','PHI','PIT','SEA','SF','TB','TEN','WAS'];
@@ -48,7 +48,7 @@ function startDraft(){
   if(!engine.slot)return showToast('Choose your draft slot first.');
   engine.reset();
   if(draftMode==='mock')engine.autoToMyPick();
-  screenshotFiles=[];reviewPicks=[];boardSnapshot=null;boardMeta={teamNames:[],lastSync:null};save();render();
+  screenshotFiles=[];reviewPicks=[];resultsSnapshot=null;boardMeta={teamNames:[],lastSync:null};save();render();
   showToast(draftMode==='live'?`Live draft reset. Waiting for Yahoo pick 1.`:`Mock started from slot ${engine.slot}.`);
 }
 function startMock(){draftMode='mock';localStorage.setItem(MODE_KEY,draftMode);if(qs('modeSelect'))qs('modeSelect').value='mock';startDraft()}
@@ -60,9 +60,9 @@ function takePlayer(id){if(!engine.slot)return showToast('Choose a draft slot fi
 function markDrafted(id){if(!engine.slot)return showToast('Choose a draft slot first.');const team=engine.teamForOverall(engine.overall),mine=team===engine.slot;if(mine&&draftMode==='live')return showToast('Yahoo says this is your pick. Use Draft, not Gone.');if(!engine.choose(id,team,mine))return;save();render()}
 
 function toggleFav(id){engine.favorites[id]=!engine.favorites[id];save();render()}
-function render(){renderHeader();renderLiveStatus();renderRecommendations();renderRoster();renderOpponentIntel();renderLeagueRosters();renderBoard();renderTeam();renderAnalytics();renderBoardSyncSummary()}
+function render(){renderHeader();renderLiveStatus();renderRecommendations();renderRoster();renderOpponentIntel();renderLeagueRosters();renderDraftTracker();renderBoard();renderTeam();renderAnalytics();renderBoardSyncSummary()}
 function teamLabel(teamNo){return boardMeta.teamNames?.[teamNo-1]||`Team ${teamNo}`}
-function renderBoardSyncSummary(){const el=qs('boardSyncSummary');if(!el)return;const s=boardMeta.lastSync;if(!s){el.innerHTML=`<strong>No board snapshot yet</strong><small>Paste the Yahoo Board when you are on the clock. DraftForge will build every roster and remove drafted players automatically.</small>`;return}const mine=engine.myPlayers().length;el.innerHTML=`<strong>Synced through pick ${Math.max(0,(s.currentPick||engine.overall)-1)}</strong><small>${engine.picks.length} drafted • ${engine.avail().length} available • your roster ${mine} • ${s.teamsDetected||engine.teamCount()} teams mapped</small>`}
+function renderBoardSyncSummary(){const el=qs('boardSyncSummary');if(!el)return;const s=boardMeta.lastSync;if(!s){el.innerHTML=`<strong>No Results sync yet</strong><small>Paste a Yahoo Results screenshot every few picks. DraftForge will add only new rows and keep the tracker editable.</small>`;return}const mine=engine.myPlayers().length;el.innerHTML=`<strong>Synced through pick ${Math.max(0,s.throughPick||engine.overall-1)}</strong><small>${engine.picks.length} drafted • ${engine.avail().length} available • your roster ${mine} • tracker is editable</small>`}
 function renderLeagueRosters(){const el=qs('leagueRosters');if(!el)return;el.innerHTML=Array.from({length:engine.teamCount()},(_,i)=>{const n=i+1,list=engine.teamRoster(n),mine=n===engine.slot;return `<div class="league-roster ${mine?'mine':''}"><div><strong>${escapeHtml(teamLabel(n))}</strong>${mine?'<span>YOU</span>':''}<small>${list.length} pick${list.length===1?'':'s'}</small></div><p>${list.length?list.map(p=>`${escapeHtml(p.name)} <em>${p.pos}</em>`).join(' · '):'No picks yet'}</p></div>`}).join('')}
 function renderHeader(){
   const league=engine.league,round=engine.roundFor(engine.overall),total=engine.totalRosterSize(),team=engine.teamForOverall(engine.overall),nx=engine.nextMine(),away=nx?Math.max(0,nx-engine.overall):null;
@@ -80,8 +80,8 @@ function renderLiveStatus(){
   if(draftMode==='live'){
     const memory=`Board memory: ${engine.picks.length} pick${engine.picks.length===1?'':'s'} • ${engine.avail().length} available.`;
     el.innerHTML=mine
-      ? `<div><span class="pulse-dot"></span><strong>YOU'RE ON THE CLOCK — PICK ${engine.overall}</strong><small>Paste one Yahoo Board screenshot. DraftForge will rebuild the league state and update your recommendation. ${memory}</small></div><div class="live-actions"><button class="button primary compact" onclick="openScreenshotSync()">Paste Yahoo Board</button></div>`
-      : `<div><span class="pulse-dot"></span><strong>LIVE — ${teamLabel(engine.teamForOverall(engine.overall))} ON PICK ${engine.overall}</strong><small>Paste the Yahoo Board once per round when you are on or near the clock. ${memory}</small></div><div class="live-actions"><button class="button primary compact" onclick="openScreenshotSync()">Paste Yahoo Board</button></div>`;
+      ? `<div><span class="pulse-dot"></span><strong>YOU'RE ON THE CLOCK — PICK ${engine.overall}</strong><small>Paste a Yahoo Results screenshot every 3–5 picks. Review any low-confidence row, apply it, and DraftForge updates instantly. ${memory}</small></div><div class="live-actions"><button class="button primary compact" onclick="openScreenshotSync()">Paste Yahoo Results</button></div>`
+      : `<div><span class="pulse-dot"></span><strong>LIVE — ${teamLabel(engine.teamForOverall(engine.overall))} ON PICK ${engine.overall}</strong><small>Paste Yahoo Results every few picks, especially when you are 3–5 picks away. ${memory}</small></div><div class="live-actions"><button class="button primary compact" onclick="openScreenshotSync()">Paste Yahoo Results</button></div>`;
   }else{
     el.innerHTML=`<div><strong>MOCK MODE</strong><small>Opponent selections are simulated automatically after each of your picks.</small></div>`;
   }
@@ -130,32 +130,34 @@ function latestImageFile(files){const arr=[...(files||[])].filter(f=>f.type&&f.t
 function handleScreenshotFiles(files,autoAnalyze=true){
   const f=latestImageFile(files);if(!f)return;
   if(screenshotFiles[0]?._previewUrl)URL.revokeObjectURL(screenshotFiles[0]._previewUrl);
-  f._previewUrl=URL.createObjectURL(f);screenshotFiles=[f];reviewPicks=[];boardSnapshot=null;renderScreenshotReview();
+  f._previewUrl=URL.createObjectURL(f);screenshotFiles=[f];reviewPicks=[];resultsSnapshot=null;renderScreenshotReview();
   if(autoAnalyze)setTimeout(()=>analyzeScreenshots(),80);
 }
 function handleScreenshotPaste(e){
   const files=[];for(const item of e.clipboardData?.items||[]){if(item.type?.startsWith('image/')){const f=item.getAsFile();if(f)files.push(f)}}
   if(!files.length)return;
   e.preventDefault();if(!qs('screenshotModal')?.classList.contains('open'))openScreenshotSync();
-  handleScreenshotFiles(files,true);showToast('Yahoo Board pasted — rebuilding draft state.');
+  handleScreenshotFiles(files,true);showToast('Yahoo Results pasted — reading recent picks.');
 }
+function reviewMatchedPlayer(x){return x.matched||x.player||x.suggested||null}
+function updateReviewPlayer(i,value){const row=reviewPicks[i];if(!row)return;const p=fuzzyPlayer(value);row.name=value;row.matched=p||null;row.player=p||null;row.manual=!!p;row.confidence=p?1:0;renderScreenshotReview()}
 function renderScreenshotReview(){
   const f=screenshotFiles[0];
-  qs('screenshotQueue').innerHTML=f?`<div class="preview-item screenshot-preview"><img src="${f._previewUrl||''}" alt="Yahoo Board screenshot preview"><span>${escapeHtml(f.name||'Pasted Yahoo Board')}</span><button class="icon" onclick="removeScreenshot(0)">✕</button></div>`:'<div class="subtle">No screenshot queued. In Live mode, press Ctrl+V anywhere after taking a Yahoo Board snip.</div>';
+  qs('screenshotQueue').innerHTML=f?`<div class="preview-item screenshot-preview"><img src="${f._previewUrl||''}" alt="Yahoo Results screenshot preview"><span>${escapeHtml(f.name||'Pasted Yahoo Results')}</span><button class="icon" onclick="removeScreenshot(0)">✕</button></div>`:'<div class="subtle">No screenshot queued. Press Ctrl+V after snipping Yahoo Results → Round by Round.</div>';
   const summary=qs('snapshotSummary');
   if(summary){
-    if(boardSnapshot){
-      const rec=DraftForgeScreenshotSync.reconcileBoardSnapshot(boardSnapshot,engine.picks,{nextOverall:engine.overall});
-      summary.innerHTML=`<div class="snapshot-kpis"><div><b>${boardSnapshot.picks.length}</b><span>players read</span></div><div><b>${rec.newPicks.length}</b><span>new picks</span></div><div><b>${boardSnapshot.currentPick||'—'}</b><span>on the clock</span></div><div><b>${boardSnapshot.userSlot||engine.slot||'—'}</b><span>your slot</span></div></div>${rec.conflicts.length?`<div class="sync-warning">${rec.conflicts.length} conflict${rec.conflicts.length===1?'':'s'} detected. Nothing will be changed until resolved.</div>`:''}${rec.unresolved.length?`<div class="sync-warning">Could not confidently read pick${rec.unresolved.length===1?'':'s'} ${rec.unresolved.join(', ')}. DraftForge will not guess.</div>`:''}`;
-    }else summary.innerHTML='<div class="subtle">Paste the full Yahoo Board. DraftForge will detect columns, current pick, every drafted player, and your team.</div>';
+    if(resultsSnapshot){
+      const rec=reconcileReviewRows();
+      summary.innerHTML=`<div class="snapshot-kpis"><div><b>${resultsSnapshot.rows.length}</b><span>result rows</span></div><div><b>${rec.newRows.length}</b><span>new picks</span></div><div><b>${resultsSnapshot.throughPick||'—'}</b><span>through pick</span></div><div><b>${rec.unresolved.length}</b><span>needs review</span></div></div>${rec.conflicts.length?`<div class="sync-warning">${rec.conflicts.length} conflict${rec.conflicts.length===1?'':'s'} detected. Correct the highlighted player before applying.</div>`:''}${rec.unresolved.length?`<div class="sync-warning">Resolve pick${rec.unresolved.length===1?'':'s'} ${rec.unresolved.join(', ')} in the editable rows below. DraftForge will not guess.</div>`:''}`;
+    }else summary.innerHTML='<div class="subtle">Paste Yahoo Results → Round by Round. Overlap a few already-known picks when possible; DraftForge will ignore confirmed rows and add only the new ones.</div>';
   }
   reviewPicks.sort((a,b)=>a.pick-b.pick);
-  qs('reviewPicks').innerHTML=reviewPicks.length?reviewPicks.map((x,i)=>`<div class="review-item ${x.known?'known-row':''}"><input class="review-pick-number" type="number" min="1" value="${x.pick}" disabled><span><b>${escapeHtml(x.matched?.name||x.name||'Unresolved')}</b><small>${escapeHtml(teamLabel(x.team||engine.teamForOverall(x.pick)))} • ${x.known?'confirmed':'NEW'} • ${Math.round((x.confidence||0)*100)}% confidence</small></span><span class="sync-status ${x.known?'known':'new'}">${x.known?'KNOWN':'NEW'}</span></div>`).join(''):'<div class="subtle">No board picks analyzed yet.</div>';
-  if(qs('screenshotStatus'))qs('screenshotStatus').textContent=boardSnapshot?`Board detected • ${boardSnapshot.teams}-team league • current pick ${boardSnapshot.currentPick||'unknown'} • ${boardSnapshot.picks.length} player cells recognized.`:`${engine.picks.length} picks currently stored in DraftForge memory.`;
+  qs('reviewPicks').innerHTML=reviewPicks.length?reviewPicks.map((x,i)=>{const p=reviewMatchedPlayer(x),known=engine.picks.some(v=>v.overall===x.pick&&p&&v.id===p.id),bad=!p;return `<div class="review-item ${known?'known-row':''} ${bad?'needs-review':''}"><input class="review-pick-number" type="number" min="1" value="${x.pick}" disabled><span class="review-player"><input class="review-player-input" list="playerNames" value="${escapeHtml(p?.name||x.name||'')}" placeholder="Type player name" onchange="updateReviewPlayer(${i},this.value)"><small>${escapeHtml(teamLabel(engine.teamForOverall(x.pick)))} • ${known?'confirmed':p?'NEW / REVIEW':'UNRESOLVED'}${x.fantasyTeam?` • Yahoo: ${escapeHtml(x.fantasyTeam)}`:''}${x.manual?' • manual':` • ${Math.round((x.confidence||0)*100)}% OCR`}</small></span><span class="sync-status ${known?'known':bad?'warn':'new'}">${known?'KNOWN':bad?'FIX':'NEW'}</span></div>`}).join(''):'<div class="subtle">No Results rows analyzed yet.</div>';
+  if(qs('screenshotStatus'))qs('screenshotStatus').textContent=resultsSnapshot?`Results detected • ${resultsSnapshot.rows.length} rows • through pick ${resultsSnapshot.throughPick||'unknown'} • ${engine.picks.length} picks already stored.`:`${engine.picks.length} picks currently stored in DraftForge memory.`;
 }
-function removeScreenshot(i){const f=screenshotFiles[i];if(f?._previewUrl)URL.revokeObjectURL(f._previewUrl);screenshotFiles.splice(i,1);reviewPicks=[];boardSnapshot=null;renderScreenshotReview()}
-function normalizeName(s=''){return s.toLowerCase().replace(/[^a-z0-9]/g,'')}
-function fuzzyPlayer(name){const n=normalizeName(name);let exact=DRAFTFORGE_PLAYERS.find(p=>normalizeName(p.name)===n);if(exact)return exact;return DRAFTFORGE_PLAYERS.find(p=>normalizeName(p.name).includes(n)||n.includes(normalizeName(p.name)))||null}
+function removeScreenshot(i){const f=screenshotFiles[i];if(f?._previewUrl)URL.revokeObjectURL(f._previewUrl);screenshotFiles.splice(i,1);reviewPicks=[];resultsSnapshot=null;renderScreenshotReview()}
+function normalizeName(s=''){return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'')}
+function fuzzyPlayer(name){const n=normalizeName(name);if(!n)return null;let exact=DRAFTFORGE_PLAYERS.find(p=>normalizeName(p.name)===n);if(exact)return exact;const candidates=DRAFTFORGE_PLAYERS.filter(p=>normalizeName(p.name).includes(n)||n.includes(normalizeName(p.name)));return candidates.length===1?candidates[0]:null}
 function loadTesseract(){
   if(window.Tesseract)return Promise.resolve(window.Tesseract);
   if(loadTesseract._promise)return loadTesseract._promise;
@@ -164,94 +166,73 @@ function loadTesseract(){
 }
 async function getOcrWorker(){
   await loadTesseract();
-  if(!ocrWorkerPromise)ocrWorkerPromise=(async()=>{const worker=await Tesseract.createWorker('eng',1,{logger:m=>{if(m.status==='recognizing text'&&qs('screenshotStatus'))qs('screenshotStatus').textContent=`Reading Yahoo Board… ${Math.round((m.progress||0)*100)}%`}});await worker.setParameters({tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});return worker})();
+  if(!ocrWorkerPromise)ocrWorkerPromise=(async()=>{const worker=await Tesseract.createWorker('eng',1,{logger:m=>{if(m.status==='recognizing text'&&qs('screenshotStatus'))qs('screenshotStatus').textContent=`Reading Yahoo Results… ${Math.round((m.progress||0)*100)}%`}});await worker.setParameters({tessedit_pageseg_mode:'11',preserve_interword_spaces:'1'});return worker})();
   return ocrWorkerPromise;
-}
-async function preprocessYahooBoardScreenshot(file){
-  const bmp=await createImageBitmap(file),cropX=Math.floor(bmp.width*.175),cropY=Math.floor(bmp.height*.245),cropW=Math.floor(bmp.width*.67),cropH=Math.floor(bmp.height*.695),scale=2;
-  const c=document.createElement('canvas');c.width=cropW*scale;c.height=cropH*scale;const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(bmp,cropX,cropY,cropW,cropH,0,0,c.width,c.height);
-  const im=ctx.getImageData(0,0,c.width,c.height),d=im.data;let avg=0;for(let i=0;i<d.length;i+=4)avg+=(d[i]+d[i+1]+d[i+2])/3;avg/=d.length/4;const invert=avg<128;
-  for(let i=0;i<d.length;i+=4){let v=.299*d[i]+.587*d[i+1]+.114*d[i+2];if(invert)v=255-v;v=Math.max(0,Math.min(255,(v-128)*2.05+128));d[i]=d[i+1]=d[i+2]=v;d[i+3]=255}ctx.putImageData(im,0,0);return c;
 }
 function wordsFromTsv(tsv=''){
   const lines=String(tsv||'').split(/\r?\n/);if(lines.length<2)return[];const hdr=lines.shift().split('\t'),idx=Object.fromEntries(hdr.map((x,i)=>[x,i])),out=[];
   for(const line of lines){if(!line)continue;const a=line.split('\t'),text=String(a[idx.text]||'').trim();if(!text)continue;const left=+a[idx.left]||0,top=+a[idx.top]||0,width=+a[idx.width]||0,height=+a[idx.height]||0;out.push({text,confidence:+a[idx.conf]||0,bbox:{x0:left,y0:top,x1:left+width,y1:top+height}})}return out;
 }
-async function sourceCanvasFromFile(file){
-  const bmp=await createImageBitmap(file),c=document.createElement('canvas');c.width=bmp.width;c.height=bmp.height;const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(bmp,0,0);try{bmp.close?.()}catch{}return c;
-}
+async function sourceCanvasFromFile(file){const bmp=await createImageBitmap(file),c=document.createElement('canvas');c.width=bmp.width;c.height=bmp.height;const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(bmp,0,0);try{bmp.close?.()}catch{}return c}
+function preprocessResultsCanvas(source){const scale=source.width<1200?1.7:1.25,c=document.createElement('canvas');c.width=Math.round(source.width*scale);c.height=Math.round(source.height*scale);const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(source,0,0,c.width,c.height);const im=ctx.getImageData(0,0,c.width,c.height),d=im.data;let avg=0;for(let i=0;i<d.length;i+=4)avg+=(d[i]+d[i+1]+d[i+2])/3;avg/=Math.max(1,d.length/4);const invert=avg<145;for(let i=0;i<d.length;i+=4){let v=.299*d[i]+.587*d[i+1]+.114*d[i+2];if(invert)v=255-v;v=Math.max(0,Math.min(255,(v-128)*1.55+128));d[i]=d[i+1]=d[i+2]=v;d[i+3]=255}ctx.putImageData(im,0,0);return c}
 function ocrWordsFromResult(result){let words=result?.data?.words||[];if(!words.length&&result?.data?.tsv)words=wordsFromTsv(result.data.tsv);return words||[]}
-async function recognizeCanvasWords(worker,canvas,psm='11'){
-  await worker.setParameters({tessedit_pageseg_mode:String(psm),preserve_interword_spaces:'1'});
-  const result=await worker.recognize(canvas,{}, {text:true,tsv:true});return ocrWordsFromResult(result);
-}
-async function detectYahooHeaders(worker,sourceCanvas,grid){
-  const names=Array.from({length:grid.teams},(_,i)=>`Team ${i+1}`),header=DraftForgeBoardVision.makeHeaderCanvas(sourceCanvas,grid);if(!header)return{teamNames:names,userSlot:null};
-  try{
-    const words=await recognizeCanvasWords(worker,header.canvas,'7'),groups=Array.from({length:grid.teams},()=>[]);
-    for(const w of words){const b=w.bbox||{x0:w.left||0,x1:(w.left||0)+(w.width||0)},cx=header.x0+((+b.x0+(+b.x1||+b.x0))/2)/header.scale;let col=0,best=1e9;grid.colCenters.forEach((v,i)=>{const d=Math.abs(v-cx);if(d<best){best=d;col=i}});const text=String(w.text||'').replace(/^[^a-z0-9]+|[^a-z0-9.]+$/ig,'').trim();if(text)groups[col].push(text)}
-    let userSlot=null,userScore=0;groups.forEach((g,i)=>{const text=g.join(' ').replace(/\s+/g,' ').trim();if(text)names[i]=text.slice(0,24);const n=normalizeName(text),score=Math.max(n.includes('you')?1:0,DraftForgeScreenshotSync.similarity(n,'you'),DraftForgeScreenshotSync.similarity(n,'vou'));if(score>userScore&&score>=.56){userScore=score;userSlot=i+1;names[i]='You'}});return{teamNames:names,userSlot};
-  }catch(e){console.warn('Header OCR fallback',e);return{teamNames:names,userSlot:null}}
-}
-async function readYahooTiles(worker,sourceCanvas,grid,nextOverall){
-  const existingIds=new Set(engine.picks.map(x=>x.id)),toRead=grid.tiles.filter(t=>!t.clock&&t.overall>=nextOverall&&t.overall<grid.currentPick).sort((a,b)=>a.overall-b.overall),resolved=new Map(),rawChunks=new Map();
-  if(!toRead.length)return{picks:[],cells:[],unresolvedTiles:[],firstPassCount:0,secondPassCount:0};
-  const pass1=DraftForgeBoardVision.makeTileComposite(sourceCanvas,toRead,{patchW:330,patchH:210,gap:18,mode:'distance'}),words1=await recognizeCanvasWords(worker,pass1.canvas,'11'),chunks1=DraftForgeBoardVision.chunksFromOcrWords(words1,pass1),seen=new Set(existingIds);
-  toRead.forEach((tile,i)=>{const chunk=`${tile.pos||''} ${chunks1[i]||''}`.trim();rawChunks.set(tile.overall,chunk);const m=DraftForgeScreenshotSync.matchBoardCell(chunk,DRAFTFORGE_PLAYERS,tile.overall,seen);if(m?.accepted){seen.add(m.player.id);resolved.set(tile.overall,{tile,match:m,chunk})}});
-  let unresolved=toRead.filter(t=>!resolved.has(t.overall)),secondPassCount=0;
-  if(unresolved.length){
-    qs('screenshotStatus').textContent=`High-resolution retry on ${unresolved.length} unclear tile${unresolved.length===1?'':'s'}…`;
-    const pass2=DraftForgeBoardVision.makeTileComposite(sourceCanvas,unresolved,{patchW:430,patchH:280,gap:22,mode:'luma'}),words2=await recognizeCanvasWords(worker,pass2.canvas,'11'),chunks2=DraftForgeBoardVision.chunksFromOcrWords(words2,pass2);secondPassCount=unresolved.length;
-    unresolved.forEach((tile,i)=>{const chunk=`${tile.pos||''} ${rawChunks.get(tile.overall)||''} ${chunks2[i]||''}`.replace(/\s+/g,' ').trim(),m=DraftForgeScreenshotSync.matchBoardCell(chunk,DRAFTFORGE_PLAYERS,tile.overall,seen);rawChunks.set(tile.overall,chunk);if(m?.accepted){seen.add(m.player.id);resolved.set(tile.overall,{tile,match:m,chunk})}});
-  }
-  unresolved=toRead.filter(t=>!resolved.has(t.overall));
-  const picks=[...resolved.values()].map(({tile,match,chunk})=>({overall:tile.overall,team:tile.col+1,id:match.player.id,player:match.player,confidence:match.confidence,raw:chunk})).sort((a,b)=>a.overall-b.overall),cells=toRead.map(tile=>{const r=resolved.get(tile.overall);return r?{overall:tile.overall,team:tile.col+1,round:tile.round,col:tile.col,accepted:true,player:r.match.player,confidence:r.match.confidence,raw:r.chunk}:{overall:tile.overall,team:tile.col+1,round:tile.round,col:tile.col,accepted:false,raw:rawChunks.get(tile.overall)||'',pos:tile.pos}});
-  return{picks,cells,unresolvedTiles:unresolved,firstPassCount:toRead.length,secondPassCount};
+async function recognizeCanvasWords(worker,canvas,psm='11'){await worker.setParameters({tessedit_pageseg_mode:String(psm),preserve_interword_spaces:'1'});const result=await worker.recognize(canvas,{}, {text:true,tsv:true});return ocrWordsFromResult(result)}
+function reconcileReviewRows(){
+  const snapshot={...(resultsSnapshot||{}),rows:reviewPicks.map(x=>({...x,player:reviewMatchedPlayer(x),matched:reviewMatchedPlayer(x)})),throughPick:resultsSnapshot?.throughPick||reviewPicks.reduce((m,x)=>Math.max(m,x.pick),0)};
+  return DraftForgeScreenshotSync.reconcileResultsSnapshot(snapshot,engine.picks,{nextOverall:engine.overall});
 }
 async function analyzeScreenshots(){
-  if(!screenshotFiles.length)return showToast('Paste or choose a Yahoo Board screenshot first.');
+  if(!screenshotFiles.length)return showToast('Paste or choose a Yahoo Results screenshot first.');
   let worker;try{worker=await getOcrWorker()}catch{return showToast('Browser OCR could not load. Check internet access and try again.')}
-  const button=qs('analyzeScreenshotButton');if(button){button.disabled=true;button.textContent='Reading Yahoo Board…'}
-  qs('screenshotStatus').textContent='Finding Yahoo player tiles…';
+  const button=qs('analyzeScreenshotButton');if(button){button.disabled=true;button.textContent='Reading Yahoo Results…'}
+  qs('screenshotStatus').textContent='Finding Results rows and pick numbers…';
   try{
-    const sourceCanvas=await sourceCanvasFromFile(screenshotFiles[0]),grid=DraftForgeBoardVision.detectTileGrid(sourceCanvas,{preferredTeams:engine.teamCount()});
-    if(!grid.ok)throw new Error(grid.reason||'Yahoo tile grid not found');
-    qs('screenshotStatus').textContent=`${grid.teams} columns • ${grid.tiles.length} Yahoo tiles found • reading drafted players…`;
-    if(grid.teams!==engine.teamCount()&&engine.picks.length===0){engine.league.teams=grid.teams;engine.ensureTeams();rebuildSlotSelect();showToast(`Yahoo Board detected a ${grid.teams}-team league. DraftForge updated automatically.`)}
-    const headers=await detectYahooHeaders(worker,sourceCanvas,grid),read=await readYahooTiles(worker,sourceCanvas,grid,engine.overall),userSlot=headers.userSlot||engine.slot||null;
-    if(headers.userSlot&&engine.picks.length===0){engine.slot=headers.userSlot;rebuildSlotSelect();if(qs('slotSelect'))qs('slotSelect').value=engine.slot}
-    boardSnapshot={width:sourceCanvas.width,height:sourceCanvas.height,teams:grid.teams,rounds:grid.rows,teamNames:headers.teamNames,userSlot,currentPick:grid.currentPick,picks:read.picks,cells:read.cells,vision:{tiles:grid.tiles.length,completedTiles:grid.tiles.filter(t=>!t.clock&&t.overall<grid.currentPick).length,newTiles:read.firstPassCount,retried:read.secondPassCount,unresolved:read.unresolvedTiles.map(t=>t.overall)}};
-    const rec=DraftForgeScreenshotSync.reconcileBoardSnapshot(boardSnapshot,engine.picks,{nextOverall:engine.overall});
-    reviewPicks=boardSnapshot.picks.map(p=>({pick:p.overall,team:p.team,name:p.player.name,matched:p.player,known:engine.picks.some(x=>x.overall===p.overall&&x.id===p.id),confidence:p.confidence}));renderScreenshotReview();
-    if(rec.safe){applyBoardSnapshot(true);return}
-    const msg=rec.conflicts.length?`${rec.conflicts.length} draft-state conflict${rec.conflicts.length===1?'':'s'} need review.`:rec.unresolved.length?`Could not confidently read pick${rec.unresolved.length===1?'':'s'} ${rec.unresolved.join(', ')}.`:'Board needs review.';showToast(msg);
-  }catch(e){console.error(e);boardSnapshot=null;reviewPicks=[];renderScreenshotReview();showToast('Board reader failed. Keep every Yahoo team column visible and capture the full Board.');qs('screenshotStatus').textContent=`Board read failed: ${e?.message||'unknown error'}. DraftForge memory was not changed.`}
-  finally{try{await worker?.setParameters({tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'})}catch{}if(button){button.disabled=false;button.textContent='Analyze Again'}}
+    const source=await sourceCanvasFromFile(screenshotFiles[0]),canvas=preprocessResultsCanvas(source),words=await recognizeCanvasWords(worker,canvas,'11');
+    resultsSnapshot=DraftForgeScreenshotSync.parseYahooResultsWords(words,DRAFTFORGE_PLAYERS,{width:canvas.width,height:canvas.height,teams:engine.teamCount(),maxPicks:engine.maxPicks(),existingPicks:engine.picks});
+    if(!resultsSnapshot.rows.length)throw new Error('No Yahoo Results rows found');
+    if(resultsSnapshot.userSlot&&!engine.slot){engine.slot=resultsSnapshot.userSlot;rebuildSlotSelect();if(qs('slotSelect'))qs('slotSelect').value=engine.slot}
+    resultsSnapshot.teamNames?.forEach((name,i)=>{if(name&&name!==`Team ${i+1}`)boardMeta.teamNames[i]=name});
+    reviewPicks=resultsSnapshot.rows.map(r=>({pick:r.pick,team:r.team,name:r.player?.name||'',matched:r.player||null,player:r.player||null,suggested:r.suggested||null,known:r.known,confidence:r.confidence,fantasyTeam:r.fantasyTeam,raw:r.raw}));
+    renderScreenshotReview();
+    const rec=reconcileReviewRows();
+    showToast(rec.unresolved.length?`Read ${reviewPicks.length} rows • ${rec.unresolved.length} need a quick correction.`:`Read ${reviewPicks.length} rows • review and apply ${rec.newRows.length} new pick${rec.newRows.length===1?'':'s'}.`);
+  }catch(e){console.error(e);resultsSnapshot=null;reviewPicks=[];renderScreenshotReview();showToast('Results reader could not find the Yahoo pick rows. Capture Results → Round by Round with the Pick, Player, and Team columns visible.');qs('screenshotStatus').textContent=`Results read failed: ${e?.message||'unknown error'}. DraftForge memory was not changed.`}
+  finally{try{await worker?.setParameters({tessedit_pageseg_mode:'11',preserve_interword_spaces:'1'})}catch{}if(button){button.disabled=false;button.textContent='Analyze Again'}}
 }
-function applyBoardSnapshot(auto=false){
-  if(!boardSnapshot)return showToast('Analyze a Yahoo Board screenshot first.');
-  const rec=DraftForgeScreenshotSync.reconcileBoardSnapshot(boardSnapshot,engine.picks,{nextOverall:engine.overall});
-  if(rec.conflicts.length||rec.unresolved.length){renderScreenshotReview();return showToast('DraftForge will not guess. Resolve the highlighted board gap with a clearer screenshot.')}
-  if(boardSnapshot.teams!==engine.teamCount())return showToast(`Yahoo Board looks like a ${boardSnapshot.teams}-team league, but DraftForge memory is ${engine.teamCount()} teams. Start a fresh live draft before applying.`);
-  if(boardSnapshot.userSlot&&engine.slot&&boardSnapshot.userSlot!==engine.slot)return showToast(`Yahoo Board looks like slot ${boardSnapshot.userSlot}, but DraftForge is set to slot ${engine.slot}. Fix the draft slot before applying.`);
-  if(boardSnapshot.userSlot&&!engine.slot)engine.slot=boardSnapshot.userSlot;
-  if(boardSnapshot.teamNames?.length)boardMeta.teamNames=boardSnapshot.teamNames.map((x,i)=>x&&x!==`Team ${i+1}`?x:(boardMeta.teamNames?.[i]||`Team ${i+1}`));
+function applyReviewedPicks(){
+  if(!resultsSnapshot)return showToast('Analyze a Yahoo Results screenshot first.');
+  const rec=reconcileReviewRows();
+  if(rec.conflicts.length)return showToast('A reviewed row conflicts with DraftForge memory. Correct it before applying.');
+  if(rec.unresolved.length)return showToast(`Resolve pick${rec.unresolved.length===1?'':'s'} ${rec.unresolved.join(', ')} before applying.`);
   let applied=0;
-  for(const x of rec.newPicks){
-    if(x.overall!==engine.overall)break;
-    const team=engine.teamForOverall(engine.overall),mine=team===engine.slot;if(engine.choose(x.id,team,mine))applied++;
-  }
-  boardMeta.lastSync={currentPick:boardSnapshot.currentPick||engine.overall,teamsDetected:boardSnapshot.teamNames?.length||engine.teamCount(),timestamp:Date.now(),myRosterCount:engine.slot?engine.myPlayers().length:null};
+  for(const row of rec.newRows){const p=reviewMatchedPlayer(row);if(!p||row.pick!==engine.overall)break;const team=engine.teamForOverall(engine.overall),mine=team===engine.slot;if(engine.choose(p.id,team,mine))applied++}
+  boardMeta.lastSync={throughPick:engine.overall-1,timestamp:Date.now(),source:'Yahoo Results',myRosterCount:engine.slot?engine.myPlayers().length:null};
   save();render();
-  if(screenshotFiles[0]?._previewUrl)URL.revokeObjectURL(screenshotFiles[0]._previewUrl);screenshotFiles=[];reviewPicks=[];boardSnapshot=null;renderScreenshotReview();closeModal('screenshotModal');
-  const top=engine.recs(1)[0],mine=engine.slot&&engine.teamForOverall(engine.overall)===engine.slot;
-  showToast(top?`${applied} new picks synced • ${engine.avail().length} available • ${mine?'Best move':'Top target'}: ${top.p.name}`:`${applied} new picks synced.`);
-  if(mine)qs('recommendations')?.scrollIntoView({behavior:'smooth',block:'center'});
+  if(screenshotFiles[0]?._previewUrl)URL.revokeObjectURL(screenshotFiles[0]._previewUrl);screenshotFiles=[];reviewPicks=[];resultsSnapshot=null;renderScreenshotReview();closeModal('screenshotModal');
+  const top=engine.recs(1)[0],mine=engine.slot&&engine.teamForOverall(engine.overall)===engine.slot;showToast(top?`${applied} new picks synced • ${engine.avail().length} available • ${mine?'Best move':'Top target'}: ${top.p.name}`:`${applied} new picks synced.`);if(mine)qs('recommendations')?.scrollIntoView({behavior:'smooth',block:'center'});
 }
-function applyReviewedPicks(){applyBoardSnapshot(false)}
+function rebuildEngineFromPickRows(rows){
+  const league=clone(engine.league),slot=engine.slot,favorites=clone(engine.favorites||{}),sorted=(rows||[]).slice().sort((a,b)=>a.overall-b.overall);
+  const fresh=new DraftForgeEngine(DRAFTFORGE_PLAYERS,league,slot);fresh.favorites=favorites;
+  for(const row of sorted){if(row.overall!==fresh.overall)throw new Error(`Missing pick ${fresh.overall}`);if(fresh.drafted[row.id])throw new Error(`${fresh.pby(row.id)?.name||'Player'} is already used at another pick`);const team=fresh.teamForOverall(fresh.overall);if(!fresh.choose(row.id,team,team===slot))throw new Error(`Could not apply pick ${row.overall}`)}
+  fresh.history=[];engine=fresh;return engine;
+}
+function renderDraftTracker(){
+  const el=qs('draftTracker');if(!el)return;const rows=engine.picks.slice().sort((a,b)=>b.overall-a.overall),limit=36,shown=rows.slice(0,limit);
+  el.innerHTML=shown.length?`<div class="tracker-table"><div class="tracker-row tracker-head"><span>Pick</span><span>Team</span><span>Player</span><span>Pos</span><span></span></div>${shown.map(x=>{const p=engine.pby(x.id),round=engine.roundFor(x.overall),within=(x.overall-1)%engine.teamCount()+1;return `<div class="tracker-row"><span><b>${x.overall}</b><small>${round}.${within}</small></span><span>${escapeHtml(teamLabel(x.team))}</span><span><b>${escapeHtml(p?.name||'Unknown')}</b><small>${p?.team||''}</small></span><span>${p?.pos||'—'}</span><span><button class="button compact secondary" onclick="editTrackerPick(${x.overall})">Edit</button></span></div>`}).join('')}</div>${rows.length>limit?`<div class="subtle tracker-more">Showing latest ${limit} of ${rows.length} picks.</div>`:''}`:'<div class="subtle">No picks tracked yet. Results screenshots will populate this ledger.</div>';
+  const stat=qs('trackerStatus');if(stat)stat.textContent=`${engine.picks.length} picks tracked • ${engine.avail().length} players available`;
+}
+function editTrackerPick(pick){const row=engine.picks.find(x=>x.overall===pick),p=row?engine.pby(row.id):null;qs('trackerPickInput').value=pick;qs('trackerPlayerInput').value=p?.name||'';qs('trackerPlayerInput').focus();qs('trackerEditorLabel').textContent=row?`Correct pick ${pick}`:`Add pick ${pick}`}
+function saveTrackerCorrection(){
+  const pick=+qs('trackerPickInput').value,name=qs('trackerPlayerInput').value.trim(),p=fuzzyPlayer(name);if(!pick||pick<1||pick>engine.maxPicks())return showToast('Enter a valid overall pick number.');if(!p)return showToast('Choose an exact player name from the list.');
+  const rows=engine.picks.map(x=>({...x})),other=rows.find(x=>x.id===p.id&&x.overall!==pick);if(other)return showToast(`${p.name} is already recorded at pick ${other.overall}.`);
+  const idx=rows.findIndex(x=>x.overall===pick);const row={overall:pick,team:engine.teamForOverall(pick),id:p.id};if(idx>=0)rows[idx]=row;else rows.push(row);
+  rows.sort((a,b)=>a.overall-b.overall);for(let n=1;n<=rows.length;n++)if(!rows.some(x=>x.overall===n))return showToast(`Pick ${n} is still missing. Add that pick first.`);
+  try{rebuildEngineFromPickRows(rows);boardMeta.lastSync={...(boardMeta.lastSync||{}),throughPick:engine.overall-1,timestamp:Date.now(),source:'Manual tracker edit'};save();render();qs('trackerPickInput').value='';qs('trackerPlayerInput').value='';qs('trackerEditorLabel').textContent='Add / correct a pick';showToast(`Pick ${pick} saved as ${p.name}. Rosters and recommendations rebuilt.`)}catch(e){showToast(e.message||'Could not rebuild draft tracker.')}
+}
 function openYahooSync(){openModal('yahooModal')}
 async function syncYahooNow(){try{const leagueId=engine.league.leagueId||'846890',r=await fetch(`/api/yahoo/picks?leagueId=${encodeURIComponent(leagueId)}`);if(!r.ok)throw new Error('Yahoo server not configured');const data=await r.json();let applied=0;for(const x of data.picks||[]){const p=fuzzyPlayer(x.name);if(p&&!engine.drafted[p.id]){engine.choose(p.id,engine.teamForOverall(engine.overall),engine.teamForOverall(engine.overall)===engine.slot);applied++}}save();render();showToast(`Yahoo sync applied ${applied} new picks.`)}catch{showToast('Yahoo server sync is not configured on this deployment.')}}
-async function copyDraftState(){const payload=JSON.stringify({version:'8.11',mode:draftMode,overall:engine.overall,slot:engine.slot,picks:engine.picks.map(x=>({...x,name:engine.pby(x.id)?.name}))},null,2);try{await navigator.clipboard.writeText(payload);showToast('Draft state copied.')}catch{prompt('Copy draft state:',payload)}}
+async function copyDraftState(){const payload=JSON.stringify({version:'8.12',mode:draftMode,overall:engine.overall,slot:engine.slot,picks:engine.picks.map(x=>({...x,name:engine.pby(x.id)?.name}))},null,2);try{await navigator.clipboard.writeText(payload);showToast('Draft state copied.')}catch{prompt('Copy draft state:',payload)}}
 window.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.modal.open').forEach(m=>closeModal(m.id))});
 window.addEventListener('paste',handleScreenshotPaste);
 window.addEventListener('DOMContentLoaded',boot);

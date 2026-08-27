@@ -205,5 +205,51 @@
     const safe=conflicts.length===0&&unresolved.length===0&&newPicks.every((p,i)=>p.overall>=start&&(i===0?p.overall===start:newPicks[i-1].overall+1===p.overall));
     return{safe,conflicts,confirmed,newPicks,unresolved,currentPick:current,userSlot:snapshot?.userSlot||null,teamNames:snapshot?.teamNames||[]};
   }
-  return{normalizeName,levenshtein,similarity,detectPos,detectTeam,scorePlayerChunk,playersFromYahooOcrText,alignDetectedPlayers,cleanOcrWords,boardOverall,boardColumnForOverall,matchBoardCell,parseYahooBoardWords,snapshotQuality,detectYahooBoardSnapshot,reconcileBoardSnapshot};
+
+  function snakeTeamForOverall(overall,teams=12){const r=Math.ceil(overall/teams),within=(overall-1)%teams+1;return r%2?within:teams+1-within}
+  function median(nums){const a=(nums||[]).filter(Number.isFinite).sort((x,y)=>x-y);if(!a.length)return 0;const m=Math.floor(a.length/2);return a.length%2?a[m]:(a[m-1]+a[m])/2}
+  function parseYahooResultsWords(inputWords,players,options={}){
+    const ws=cleanOcrWords(inputWords),width=+options.width||Math.max(1,...ws.map(w=>w.x1)),height=+options.height||Math.max(1,...ws.map(w=>w.y1)),teams=+options.teams||12,maxPicks=+options.maxPicks||400;
+    const headers=ws.filter(w=>normalizeName(w.text)==='pick');
+    const nums=ws.map(w=>({w,n:+String(w.text||'').replace(/[^0-9]/g,'')})).filter(x=>/^\d{1,3}$/.test(String(x.w.text||'').replace(/[^0-9]/g,''))&&x.n>=1&&x.n<=maxPicks);
+    let pickX=null,tableTop=0,bestCount=-1;
+    for(const h of headers){const radius=Math.max(34,width*.045),count=nums.filter(x=>x.w.cy>h.cy+6&&Math.abs(x.w.cx-h.cx)<=radius).length;if(count>bestCount){bestCount=count;pickX=h.cx;tableTop=h.cy}}
+    let candidates=nums.filter(x=>x.w.cy>tableTop+4&&(pickX!==null?Math.abs(x.w.cx-pickX)<=Math.max(36,width*.055):x.w.cx<width*.28));
+    if(candidates.length<2)candidates=nums.filter(x=>x.w.cx<width*.30);
+    const byPick=new Map();
+    for(const x of candidates){const old=byPick.get(x.n);if(!old||x.w.confidence>old.w.confidence)byPick.set(x.n,x)}
+    candidates=[...byPick.values()].sort((a,b)=>a.w.cy-b.w.cy);
+    const gaps=[];for(let i=1;i<candidates.length;i++){const d=candidates[i].w.cy-candidates[i-1].w.cy;if(d>5&&d<height*.15)gaps.push(d)}
+    const rowTol=Math.max(12,Math.min(height*.045,(median(gaps)||height*.055)*.46));
+    const rows=[],seen=new Set(),existingByPick=new Map((options.existingPicks||[]).map(x=>[x.overall,x]));
+    const teamNames=Array.from({length:teams},(_,i)=>`Team ${i+1}`);let userSlot=null;
+    for(const x of candidates){
+      const y=x.w.cy,pick=x.n,playerLeft=x.w.x1+Math.max(5,width*.006),playerRight=width*.76;
+      const rowWords=ws.filter(w=>Math.abs(w.cy-y)<=rowTol&&w.cx>playerLeft).sort((a,b)=>a.x0-b.x0);
+      const playerWords=rowWords.filter(w=>w.cx<playerRight),teamWords=rowWords.filter(w=>w.cx>=playerRight);
+      const chunk=playerWords.map(w=>w.text).join(' ').replace(/\s+/g,' ').trim(),fantasyTeam=teamWords.map(w=>w.text).join(' ').replace(/\s+/g,' ').trim();
+      if(!chunk)continue;
+      const match=matchBoardCell(chunk,players,pick,seen),team=snakeTeamForOverall(pick,teams),accepted=!!match?.accepted;
+      if(accepted)seen.add(match.player.id);
+      if(fantasyTeam&&fantasyTeam.length<=42&&!/^(pick|player|team)$/i.test(fantasyTeam)){teamNames[team-1]=fantasyTeam;const n=normalizeName(fantasyTeam);if(n.includes('yourteam')||n==='you'||n.startsWith('you'))userSlot=team}
+      const old=existingByPick.get(pick),known=!!(old&&accepted&&old.id===match.player.id);
+      rows.push({pick,overall:pick,team,chunk,raw:chunk,fantasyTeam,accepted,known,player:accepted?match.player:null,suggested:match?.player||null,confidence:match?.confidence||0,score:match?.score||0,gap:match?.gap||0});
+    }
+    rows.sort((a,b)=>a.pick-b.pick);
+    const picks=rows.filter(r=>r.accepted&&r.player).map(r=>({overall:r.pick,team:r.team,id:r.player.id,player:r.player,confidence:r.confidence,raw:r.raw,fantasyTeam:r.fantasyTeam}));
+    const throughPick=rows.reduce((m,r)=>Math.max(m,r.pick),0),unresolved=rows.filter(r=>!r.accepted).map(r=>r.pick);
+    return{width,height,teams,rows,picks,throughPick,unresolved,teamNames,userSlot,rowTolerance:rowTol,pickColumnX:pickX};
+  }
+  function reconcileResultsSnapshot(snapshot,existingPicks=[],options={}){
+    const byPick=new Map((existingPicks||[]).map(x=>[x.overall,x])),rows=(snapshot?.rows||[]).slice().sort((a,b)=>a.pick-b.pick),start=+options.nextOverall||((existingPicks?.length||0)+1),conflicts=[],newRows=[],confirmed=[];
+    for(const r of rows){if(!r.player&&!r.matched)continue;const id=r.player?.id||r.matched?.id,old=byPick.get(r.pick);if(old){if(old.id===id)confirmed.push(r.pick);else conflicts.push({overall:r.pick,existing:old,incoming:r,reason:'pick-conflict'})}else if(r.pick>=start)newRows.push({...r,id})}
+    const through=Math.max(start-1,+snapshot?.throughPick||0,...newRows.map(r=>r.pick)),unresolved=[];
+    for(let n=start;n<=through;n++){if(byPick.has(n))continue;const row=rows.find(r=>r.pick===n);if(!row||!(row.player||row.matched))unresolved.push(n)}
+    const ids=new Map();for(const p of existingPicks||[])ids.set(p.id,p.overall);for(const r of newRows){const id=r.player?.id||r.matched?.id;if(ids.has(id)&&ids.get(id)!==r.pick)conflicts.push({overall:r.pick,existing:{overall:ids.get(id),id},incoming:r,reason:'player-duplicate'});ids.set(id,r.pick)}
+    newRows.sort((a,b)=>a.pick-b.pick);
+    const safe=!conflicts.length&&!unresolved.length&&newRows.every((r,i)=>r.pick===start+i);
+    return{safe,conflicts,confirmed,newRows,unresolved,throughPick:through};
+  }
+
+  return{normalizeName,levenshtein,similarity,detectPos,detectTeam,scorePlayerChunk,playersFromYahooOcrText,alignDetectedPlayers,cleanOcrWords,boardOverall,boardColumnForOverall,matchBoardCell,parseYahooBoardWords,snapshotQuality,detectYahooBoardSnapshot,reconcileBoardSnapshot,snakeTeamForOverall,parseYahooResultsWords,reconcileResultsSnapshot};
 });

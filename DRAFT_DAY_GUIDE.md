@@ -1,41 +1,33 @@
-# DraftForge V8.11 Draft Day Guide
+# DraftForge V8.12 — Draft Day Guide
 
 ## Before the draft
 
-1. Open DraftForge and choose **Live Draft**.
-2. Set the league format and your known draft slot.
-3. Open Yahoo's **Board** tab.
-4. Zoom Yahoo out until every team column is visible at once.
-5. Keep the top of the board visible so Round 1 remains on screen.
+- Confirm league size, scoring, roster slots, and your draft slot.
+- Select **Live Draft**.
+- Open Yahoo **Results → Round by Round** in a tab you can reach quickly.
 
-## Once per round
+## Normal cadence
 
-When you are on or near the clock:
+You do not need a screenshot after every pick.
 
-1. Press `Win + Shift + S`.
-2. Capture the full Yahoo draft view with the Board visible.
-3. Switch to DraftForge.
-4. Press `Ctrl + V`.
-5. DraftForge automatically finds the colored player tiles.
-6. It OCRs only new drafted tiles, updates all rosters and availability, then refreshes the recommendation.
+- Far from your turn: update about every 4–5 picks.
+- Inside 5 picks: take a fresh Results snip.
+- Inside 2–3 picks: refresh again if the board moved materially.
+- On the clock: DraftForge should already be synchronized and showing Best Move Now.
 
-You should not normally need to click `Gone` for every opponent pick.
+## Screenshot sync
 
-## What a successful sync means
+1. `Win + Shift + S`
+2. Capture Yahoo **Results → Round by Round**, including Pick, Player, and Team columns.
+3. `Ctrl + V` in DraftForge.
+4. Review detected rows.
+5. Correct any yellow **FIX** row by typing the exact player name.
+6. Click **Apply Reviewed Picks**.
 
-DraftForge has confirmed a continuous sequence of all required new picks from its saved state through the Yahoo clock cell. Older picks already stored in DraftForge do not need to OCR perfectly again.
+Try to include 1–3 already-synced picks at the edge of the screenshot. That overlap helps verify continuity.
 
-## If DraftForge warns about a pick
+## If OCR is wrong
 
-Do not reset the draft. The previous state is preserved. Make sure:
+Use the **Draft Tracker**. Enter the overall pick and correct player, then click **Save Pick**. DraftForge rebuilds every roster and the available-player pool from the corrected ledger.
 
-- every league column is visible;
-- Round 1/top of the board is still visible;
-- the colored player tiles are not covered by another window;
-- the screenshot is the full Yahoo Board view rather than a narrow crop.
-
-V8.11 automatically performs a second high-resolution OCR pass on unclear new tiles before showing a warning.
-
-## Recommended screen arrangement
-
-Yahoo on one side, DraftForge on the other. Take the screenshot immediately before your selection so DraftForge has the newest opponent rosters, available-player pool, positional pressure, and bye-week exposure.
+Do not force an unresolved screenshot through. DraftForge is intentionally designed to stop rather than invent a pick.

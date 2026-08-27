@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0d0f12">
-  <title>DraftForge V8.11 — Dynamic Board Reader</title>
+  <title>DraftForge V8.12 — Results Live Sync</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -12,7 +12,7 @@
 <div class="ember-field" aria-hidden="true"></div>
 <div class="app-shell">
   <aside class="sidebar">
-    <button class="brand" onclick="switchView('draft')"><span class="forge-mark">DF</span><span><strong>DRAFTFORGE</strong><small>V8.11 TILE VISION</small></span></button>
+    <button class="brand" onclick="switchView('draft')"><span class="forge-mark">DF</span><span><strong>DRAFTFORGE</strong><small>V8.12 RESULTS LIVE SYNC</small></span></button>
     <nav>
       <button class="nav-item active" data-view="draft" onclick="switchView('draft')">⌁ <span>Draft Room</span></button>
       <button class="nav-item" data-view="team" onclick="switchView('team')">▦ <span>My Team</span></button>
@@ -30,7 +30,7 @@
 
     <section class="view active" id="view-draft">
       <section class="panel draft-head">
-        <div><div class="eyebrow">Draft Room <span class="fresh">V8.11 • TILE VISION</span></div><h2 id="leagueTitle">Yahoo 12-Team Superflex</h2><p id="leagueSubtitle">12-Team PPR Snake Draft</p></div>
+        <div><div class="eyebrow">Draft Room <span class="fresh">V8.12 • RESULTS LIVE SYNC</span></div><h2 id="leagueTitle">Yahoo 12-Team Superflex</h2><p id="leagueSubtitle">12-Team PPR Snake Draft</p></div>
         <div class="metric"><span>On the clock</span><strong id="clockOwner">Choose slot</strong><small id="clockPick">—</small></div>
         <div class="metric"><span>Round</span><strong id="roundStat">1</strong><small id="overallStat">Pick 1</small></div>
         <div class="metric"><span>Picks until you</span><strong id="picksAway">—</strong><small id="nextMineStat">—</small></div>
@@ -63,8 +63,19 @@
       </section>
 
       <section class="panel league-rosters-panel">
-        <div class="panel-head"><div><div class="section-title">League Roster Memory</div><div class="subtle">Built automatically from each Yahoo Board snapshot. These rosters drive opponent-pressure forecasts.</div></div></div>
+        <div class="panel-head"><div><div class="section-title">League Roster Memory</div><div class="subtle">Built from the editable Draft Tracker. Results screenshots add picks; manual corrections instantly rebuild opponent-pressure forecasts.</div></div></div>
         <div id="leagueRosters" class="league-rosters"></div>
+      </section>
+
+      <section class="panel draft-tracker-panel" id="trackerPanel">
+        <div class="panel-head"><div><div class="section-title">Draft Tracker</div><div class="subtle" id="trackerStatus">0 picks tracked • 292 players available</div></div><span class="fresh">SOURCE OF TRUTH</span></div>
+        <div class="tracker-editor">
+          <span id="trackerEditorLabel" class="label">Add / correct a pick</span>
+          <label>Overall pick<input id="trackerPickInput" type="number" min="1" placeholder="e.g. 37"></label>
+          <label>Player<input id="trackerPlayerInput" list="playerNames" placeholder="Start typing player name"></label>
+          <button class="button primary" onclick="saveTrackerCorrection()">Save Pick</button>
+        </div>
+        <div id="draftTracker"></div>
       </section>
 
       <section class="panel board-panel">
@@ -74,8 +85,8 @@
       </section>
 
       <div class="sync-grid">
-        <section class="panel sync-card"><div><div class="eyebrow">One Screenshot Per Round</div><h3>Yahoo Board Snapshot</h3><p>When you are on the clock, paste the full Yahoo Board. DraftForge maps all 12 rosters, verifies your slot, marks every drafted player unavailable, remembers prior rounds, and refreshes the recommendation.</p></div><div><button class="button primary" onclick="openScreenshotSync()">Paste Yahoo Board</button></div></section>
-        <section class="panel sync-card"><div><div class="eyebrow">Draft Sync</div><h3>Yahoo Live Sync</h3><p id="yahooLiveMessage">Server-backed Yahoo OAuth can mirror picks automatically. Copy Draft State remains the static fallback.</p></div><div class="button-row"><button class="button secondary" onclick="copyDraftState()">Copy Draft State</button><button class="button primary" onclick="openYahooSync()">Yahoo Sync</button></div></section>
+        <section class="panel sync-card"><div><div class="eyebrow">Primary Draft-Day Input</div><h3>Yahoo Results Live Sync</h3><p>Snip <b>Results → Round by Round</b> every 3–5 picks. DraftForge reads explicit pick numbers, ignores overlap it already knows, lets you correct any questionable row, then updates every roster and recommendation.</p></div><div><button class="button primary" onclick="openScreenshotSync()">Paste Yahoo Results</button></div></section>
+        <section class="panel sync-card"><div><div class="eyebrow">Safety Net</div><h3>Editable Draft Tracker</h3><p>If OCR gets a name wrong, correct that overall pick in the tracker. The tracker is authoritative: fixing one row rebuilds drafted/available players, your roster, every opponent roster, bye load, and turn pressure.</p></div><div class="button-row"><button class="button secondary" onclick="document.getElementById('trackerPanel').scrollIntoView({behavior:'smooth',block:'start'})">Open Tracker</button><button class="button secondary" onclick="copyDraftState()">Copy State</button></div></section>
       </div>
     </section>
 
@@ -95,10 +106,10 @@
 
 <div class="modal" id="leagueModal" aria-hidden="true"><div class="modal-card"><div class="modal-head"><div><div class="eyebrow">League configuration</div><h2>League Setup</h2><p>Start with a preset, then customize the core draft settings.</p></div><button class="icon" onclick="closeModal('leagueModal')">✕</button></div><div class="form-grid"><label>Preset<select id="presetSelect" onchange="loadPresetIntoForm()"></select></label><label>Teams<input id="leagueTeams" type="number" min="4" max="20"></label><label>QB<input id="slotQB" type="number" min="0" max="3"></label><label>Superflex<input id="slotSF" type="number" min="0" max="2"></label><label>RB<input id="slotRB" type="number" min="0" max="5"></label><label>WR<input id="slotWR" type="number" min="0" max="6"></label><label>TE<input id="slotTE" type="number" min="0" max="3"></label><label>Flex<input id="slotFlex" type="number" min="0" max="4"></label><label>D/ST<input id="slotDST" type="number" min="0" max="2"></label><label>K<input id="slotK" type="number" min="0" max="2"></label><label>Bench<input id="slotBench" type="number" min="0" max="15"></label><label>PPR<input id="scoringRec" type="number" step="0.5" min="0" max="2"></label></div><div class="modal-footer"><button class="button secondary" onclick="closeModal('leagueModal')">Cancel</button><button class="button primary" onclick="applyLeagueForm()">Apply League</button></div></div></div>
 
-<div class="modal" id="screenshotModal" aria-hidden="true"><div class="modal-card wide"><div class="modal-head"><div><div class="eyebrow">Draft Day • Board Snapshot</div><h2>Paste Yahoo Board → Sync Everything → Recommend</h2><p>Take one screenshot of the full Yahoo <b>Board</b> when you are on the clock. V8.11 detects the actual Yahoo player tiles first, dynamically identifies the league size, OCRs each drafted tile at high resolution, reconstructs every roster, keeps your roster and available-player pool current, and remembers prior rounds.</p></div><button class="icon" onclick="closeModal('screenshotModal')">✕</button></div><div class="screenshot-grid"><div><div id="dropzone" class="dropzone" tabindex="0" onclick="document.getElementById('screenshotInput').click()"><input id="screenshotInput" type="file" accept="image/*" hidden onchange="handleScreenshotFiles(this.files)"><strong>Ctrl+V, drop, or choose your full Yahoo Board screenshot</strong><span>Best capture: zoom Yahoo so <b>every team column is visible at once</b>, then capture the whole browser draft view with the Board, ON THE CLOCK cell, and YOUR TEAM panel visible.</span></div><div id="screenshotQueue" class="preview-list"></div><button id="analyzeScreenshotButton" class="button primary" onclick="analyzeScreenshots()">Analyze Board</button><p class="subtle ocr-note">If every new pick is read confidently, DraftForge applies the snapshot automatically. If a pick is unclear or conflicts with saved memory, nothing is changed and the review stays open.</p></div><div><div class="label">Board snapshot</div><div id="snapshotSummary"></div><div class="label top-gap">Recognized picks</div><div id="reviewPicks" class="review-list"></div></div></div><div class="modal-footer"><span id="screenshotStatus" class="subtle">No board screenshot analyzed.</span><div><button class="button secondary" onclick="closeModal('screenshotModal')">Close</button><button class="button primary" onclick="applyReviewedPicks()">Apply Snapshot</button></div></div></div></div>
-
+<div class="modal" id="screenshotModal" aria-hidden="true"><div class="modal-card wide"><div class="modal-head"><div><div class="eyebrow">Draft Day • Results Live Sync</div><h2>Paste Yahoo Results → Review → Apply</h2><p>Use Yahoo <b>Results → Round by Round</b>. Capture the Pick, Player, and Team columns. DraftForge reads explicit overall pick numbers, matches players, keeps overlap as confirmation, and lets you edit any row before it changes draft memory.</p></div><button class="icon" onclick="closeModal('screenshotModal')">✕</button></div><div class="screenshot-grid"><div><div id="dropzone" class="dropzone" tabindex="0" onclick="document.getElementById('screenshotInput').click()"><input id="screenshotInput" type="file" accept="image/*" hidden onchange="handleScreenshotFiles(this.files)"><strong>Ctrl+V, drop, or choose a Yahoo Results screenshot</strong><span>Best capture: Results → Round by Round with several recent picks visible. Overlap 1–3 already-synced picks when convenient so DraftForge can verify continuity.</span></div><div id="screenshotQueue" class="preview-list"></div><button id="analyzeScreenshotButton" class="button primary" onclick="analyzeScreenshots()">Analyze Results</button><p class="subtle ocr-note">Nothing is applied during OCR. Review the rows first. Any unresolved or conflicting pick stays editable and blocks Apply until corrected.</p></div><div><div class="label">Results sync</div><div id="snapshotSummary"></div><div class="label top-gap">Editable pick review</div><div id="reviewPicks" class="review-list"></div></div></div><div class="modal-footer"><span id="screenshotStatus" class="subtle">No Results screenshot analyzed.</span><div><button class="button secondary" onclick="closeModal('screenshotModal')">Close</button><button class="button primary" onclick="applyReviewedPicks()">Apply Reviewed Picks</button></div></div></div></div>
 <div class="modal" id="yahooModal" aria-hidden="true"><div class="modal-card"><div class="modal-head"><div><div class="eyebrow">Yahoo Draft Sync</div><h2>Server-backed Live Sync</h2><p>Yahoo authorization needs server-side credentials. Do not put secrets into this public GitHub project.</p></div><button class="icon" onclick="closeModal('yahooModal')">✕</button></div><div class="steps"><div><b>1</b><span>Deploy the optional Node server or another secret-backed backend.</span></div><div><b>2</b><span>Set Yahoo OAuth credentials only in server environment variables.</span></div><div><b>3</b><span>Authorize on Yahoo and let DraftForge mirror draft picks.</span></div><div><b>4</b><span>Keep Copy Draft State / manual sync as the fallback.</span></div></div><div class="modal-footer"><button class="button secondary" onclick="copyDraftState()">Copy Draft State</button><button class="button primary" onclick="syncYahooNow()">Try Server Sync</button></div></div></div>
 
+<datalist id="playerNames"></datalist>
 <div id="toast" class="toast"></div>
 <script src="data/players.js"></script><script src="data/presets.js"></script><script src="engine.js"></script><script src="sync.js"></script><script src="vision.js"></script><script src="app.js" defer></script>
 </body></html>
