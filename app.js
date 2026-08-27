@@ -174,7 +174,44 @@ function wordsFromTsv(tsv=''){
   for(const line of lines){if(!line)continue;const a=line.split('\t'),text=String(a[idx.text]||'').trim();if(!text)continue;const left=+a[idx.left]||0,top=+a[idx.top]||0,width=+a[idx.width]||0,height=+a[idx.height]||0;out.push({text,confidence:+a[idx.conf]||0,bbox:{x0:left,y0:top,x1:left+width,y1:top+height}})}return out;
 }
 async function sourceCanvasFromFile(file){const bmp=await createImageBitmap(file),c=document.createElement('canvas');c.width=bmp.width;c.height=bmp.height;const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(bmp,0,0);try{bmp.close?.()}catch{}return c}
-function preprocessResultsCanvas(source){const scale=source.width<1200?1.7:1.25,c=document.createElement('canvas');c.width=Math.round(source.width*scale);c.height=Math.round(source.height*scale);const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(source,0,0,c.width,c.height);const im=ctx.getImageData(0,0,c.width,c.height),d=im.data;let avg=0;for(let i=0;i<d.length;i+=4)avg+=(d[i]+d[i+1]+d[i+2])/3;avg/=Math.max(1,d.length/4);const invert=avg<145;for(let i=0;i<d.length;i+=4){let v=.299*d[i]+.587*d[i+1]+.114*d[i+2];if(invert)v=255-v;v=Math.max(0,Math.min(255,(v-128)*1.55+128));d[i]=d[i+1]=d[i+2]=v;d[i+3]=255}ctx.putImageData(im,0,0);return c}
+function preprocessResultsCanvas(source){return preprocessResultsRegion(source,0,0,source.width,source.height,source.width<1200?1.7:1.25)}
+function preprocessResultsRegion(source,x0,y0,x1,y1,scale=3){
+  x0=Math.max(0,Math.floor(x0));y0=Math.max(0,Math.floor(y0));x1=Math.min(source.width,Math.ceil(x1));y1=Math.min(source.height,Math.ceil(y1));
+  const sw=Math.max(1,x1-x0),sh=Math.max(1,y1-y0),c=document.createElement('canvas');c.width=Math.max(1,Math.round(sw*scale));c.height=Math.max(1,Math.round(sh*scale));
+  const ctx=c.getContext('2d',{willReadFrequently:true});ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(source,x0,y0,sw,sh,0,0,c.width,c.height);
+  const im=ctx.getImageData(0,0,c.width,c.height),d=im.data;let avg=0;for(let i=0;i<d.length;i+=4)avg+=(d[i]+d[i+1]+d[i+2])/3;avg/=Math.max(1,d.length/4);const invert=avg<145;
+  for(let i=0;i<d.length;i+=4){let v=.299*d[i]+.587*d[i+1]+.114*d[i+2];if(invert)v=255-v;v=Math.max(0,Math.min(255,(v-128)*1.62+128));d[i]=d[i+1]=d[i+2]=v;d[i+3]=255}ctx.putImageData(im,0,0);return c
+}
+function percentile(values,q){const a=(values||[]).filter(Number.isFinite).sort((a,b)=>a-b);if(!a.length)return 0;const i=Math.max(0,Math.min(a.length-1,Math.floor((a.length-1)*q)));return a[i]}
+function detectResultsRowLayout(source,broadWords){
+  const ws=DraftForgeScreenshotSync.cleanOcrWords(broadWords),w=source.width,h=source.height;
+  const headers=ws.filter(x=>['pick','player'].includes(normalizeName(x.text))).sort((a,b)=>a.cy-b.cy),pickHeader=ws.filter(x=>normalizeName(x.text)==='pick').sort((a,b)=>a.cy-b.cy)[0]||headers[0]||null;
+  let headerY=pickHeader?.cy||Math.round(h*.19);headerY=Math.max(0,Math.min(h-1,headerY));
+  const ctx=source.getContext('2d',{willReadFrequently:true}),im=ctx.getImageData(0,0,w,h),d=im.data;let sample=0,n=0;for(let y=0;y<h;y+=8)for(let x=0;x<w;x+=8){const i=(y*w+x)*4;sample+=(d[i]+d[i+1]+d[i+2])/3;n++}const dark=sample/Math.max(1,n)<145;
+  const start=Math.min(h-2,Math.round(headerY+Math.max(8,h*.012))),end=Math.max(start+1,Math.round(h*.985)),energy=new Float32Array(h);
+  for(let y=start;y<end;y++){let e=0;for(let x=Math.round(w*.01);x<Math.round(w*.99);x+=2){const i=(y*w+x)*4,r=d[i],g=d[i+1],b=d[i+2],lum=.299*r+.587*g+.114*b,sat=Math.max(r,g,b)-Math.min(r,g,b);if(dark?(lum>52&&(lum>90||sat>18)):(lum<210&&(lum<155||sat>18)))e++}energy[y]=e}
+  const smooth=new Float32Array(h);for(let y=start+2;y<end-2;y++)smooth[y]=(energy[y-2]+energy[y-1]+energy[y]+energy[y+1]+energy[y+2])/5;
+  const threshold=percentile(Array.from(smooth.slice(start,end)),.70),candidates=[];for(let y=start+2;y<end-2;y++)if(smooth[y]>=threshold&&smooth[y]>=smooth[y-1]&&smooth[y]>=smooth[y+1])candidates.push({y,value:smooth[y]});
+  const minDist=Math.max(18,Math.min(34,Math.round(h*.028))),selected=[];candidates.sort((a,b)=>b.value-a.value);for(const c of candidates){if(selected.every(x=>Math.abs(x.y-c.y)>=minDist))selected.push(c);if(selected.length>=28)break}selected.sort((a,b)=>a.y-b.y);
+  return{headerY,startY:start,rowCenters:selected.map(x=>x.y),rowHalf:Math.max(14,Math.round(minDist*.95)),minDist,dark}
+}
+function buildResultsRowRecords(tableWords,layout,tableCanvas,sourceY0,scale){
+  const ws=DraftForgeScreenshotSync.cleanOcrWords(tableWords),w=tableCanvas.width,rowHalf=layout.rowHalf*scale,records=[];
+  for(const sy of layout.rowCenters){const cy=(sy-sourceY0)*scale;if(cy<0||cy>tableCanvas.height)continue;const rw=ws.filter(x=>Math.abs(x.cy-cy)<=rowHalf).sort((a,b)=>a.y0-b.y0||a.x0-b.x0);if(!rw.length)continue;
+    const left=rw.filter(x=>x.cx<w*.095),player=rw.filter(x=>x.cx>=w*.075&&x.cx<w*.82),team=rw.filter(x=>x.cx>=w*.82);
+    const chunk=player.map(x=>x.text).join(' ').replace(/\s+/g,' ').trim(),fantasyTeam=team.map(x=>x.text).join(' ').replace(/\s+/g,' ').trim();
+    const nums=left.map(x=>String(x.text||'').replace(/[^0-9]/g,'')).filter(x=>/^\d{1,3}$/.test(x));const rawPick=nums[0]||null;
+    const hasMeta=!!DraftForgeScreenshotSync.detectPos(chunk)||!!DraftForgeScreenshotSync.detectTeam(chunk);if(!hasMeta&&player.length<2)continue;records.push({sourceY:sy,rawPick,chunk,fantasyTeam});
+  }
+  // Collapse accidental duplicate centers that resolve to essentially the same text band.
+  const out=[];for(const r of records){const prev=out[out.length-1];if(prev&&Math.abs(prev.sourceY-r.sourceY)<layout.minDist*.75){if(r.chunk.length>prev.chunk.length)out[out.length-1]=r}else out.push(r)}return out
+}
+async function secondPassUnresolvedRows(worker,source,records,snapshot,layout){
+  const unresolved=new Set(snapshot?.unresolved||[]);if(!unresolved.size)return snapshot;let count=0;
+  for(const row of snapshot.rows||[]){if(!unresolved.has(row.pick)||count>=4)continue;const rec=records.find(r=>r.sourceY===row.sourceY)||records[row.rowIndex];if(!rec)continue;const y=rec.sourceY,canvas=preprocessResultsRegion(source,0,y-layout.rowHalf,source.width,y+layout.rowHalf,4);const words=await recognizeCanvasWords(worker,canvas,'6'),text=DraftForgeScreenshotSync.cleanOcrWords(words).map(x=>x.text).join(' ').replace(/\s+/g,' ').trim();if(text){rec.chunk=`${rec.chunk} ${text}`.trim();count++}
+  }
+  return DraftForgeScreenshotSync.parseYahooResultsRows(records,DRAFTFORGE_PLAYERS,{teams:engine.teamCount(),maxPicks:engine.maxPicks(),existingPicks:engine.picks,nextOverall:engine.overall})
+}
 function ocrWordsFromResult(result){let words=result?.data?.words||[];if(!words.length&&result?.data?.tsv)words=wordsFromTsv(result.data.tsv);return words||[]}
 async function recognizeCanvasWords(worker,canvas,psm='11'){await worker.setParameters({tessedit_pageseg_mode:String(psm),preserve_interword_spaces:'1'});const result=await worker.recognize(canvas,{}, {text:true,tsv:true});return ocrWordsFromResult(result)}
 function reconcileReviewRows(){
@@ -185,18 +222,28 @@ async function analyzeScreenshots(){
   if(!screenshotFiles.length)return showToast('Paste or choose a Yahoo Results screenshot first.');
   let worker;try{worker=await getOcrWorker()}catch{return showToast('Browser OCR could not load. Check internet access and try again.')}
   const button=qs('analyzeScreenshotButton');if(button){button.disabled=true;button.textContent='Reading Yahoo Results…'}
-  qs('screenshotStatus').textContent='Finding Results rows and pick numbers…';
+  qs('screenshotStatus').textContent='Finding the Yahoo Results table and row bands…';
   try{
-    const source=await sourceCanvasFromFile(screenshotFiles[0]),canvas=preprocessResultsCanvas(source),words=await recognizeCanvasWords(worker,canvas,'11');
-    resultsSnapshot=DraftForgeScreenshotSync.parseYahooResultsWords(words,DRAFTFORGE_PLAYERS,{width:canvas.width,height:canvas.height,teams:engine.teamCount(),maxPicks:engine.maxPicks(),existingPicks:engine.picks});
-    if(!resultsSnapshot.rows.length)throw new Error('No Yahoo Results rows found');
+    const source=await sourceCanvasFromFile(screenshotFiles[0]);
+    // Pass 1: lightweight whole-image OCR only to locate the Pick/Player header.
+    const broadWords=await recognizeCanvasWords(worker,source,'11'),layout=detectResultsRowLayout(source,broadWords);
+    if(!layout.rowCenters.length)throw new Error('No result row bands found');
+    // Pass 2: crop just the results table, enlarge it 3×, and OCR the compact table once.
+    const tableY0=Math.max(0,layout.startY-4),tableY1=Math.min(source.height,Math.max(...layout.rowCenters)+layout.rowHalf+8),scale=source.width<900?3.2:2.7;
+    const table=preprocessResultsRegion(source,0,tableY0,source.width,tableY1,scale),tableWords=await recognizeCanvasWords(worker,table,'6'),records=buildResultsRowRecords(tableWords,layout,table,tableY0,scale);
+    if(!records.length)throw new Error('No Yahoo Results rows found');
+    resultsSnapshot=DraftForgeScreenshotSync.parseYahooResultsRows(records,DRAFTFORGE_PLAYERS,{teams:engine.teamCount(),maxPicks:engine.maxPicks(),existingPicks:engine.picks,nextOverall:engine.overall});
+    if(!resultsSnapshot.rows.length)throw new Error('Could not establish the pick-number sequence');
+    // Only questionable NEW rows get an expensive dedicated OCR pass. Cap it so the
+    // live workflow remains fast under a short draft clock.
+    resultsSnapshot=await secondPassUnresolvedRows(worker,source,records,resultsSnapshot,layout);
     if(resultsSnapshot.userSlot&&!engine.slot){engine.slot=resultsSnapshot.userSlot;rebuildSlotSelect();if(qs('slotSelect'))qs('slotSelect').value=engine.slot}
     resultsSnapshot.teamNames?.forEach((name,i)=>{if(name&&name!==`Team ${i+1}`)boardMeta.teamNames[i]=name});
-    reviewPicks=resultsSnapshot.rows.map(r=>({pick:r.pick,team:r.team,name:r.player?.name||'',matched:r.player||null,player:r.player||null,suggested:r.suggested||null,known:r.known,confidence:r.confidence,fantasyTeam:r.fantasyTeam,raw:r.raw}));
-    renderScreenshotReview();
-    const rec=reconcileReviewRows();
-    showToast(rec.unresolved.length?`Read ${reviewPicks.length} rows • ${rec.unresolved.length} need a quick correction.`:`Read ${reviewPicks.length} rows • review and apply ${rec.newRows.length} new pick${rec.newRows.length===1?'':'s'}.`);
-  }catch(e){console.error(e);resultsSnapshot=null;reviewPicks=[];renderScreenshotReview();showToast('Results reader could not find the Yahoo pick rows. Capture Results → Round by Round with the Pick, Player, and Team columns visible.');qs('screenshotStatus').textContent=`Results read failed: ${e?.message||'unknown error'}. DraftForge memory was not changed.`}
+    reviewPicks=resultsSnapshot.rows.map(r=>({pick:r.pick,team:r.team,name:r.player?.name||'',matched:r.player||null,player:r.player||null,suggested:r.suggested||null,known:r.known,confidence:r.confidence,fantasyTeam:r.fantasyTeam,raw:r.raw,sourceY:r.sourceY}));
+    renderScreenshotReview();const rec=reconcileReviewRows();
+    const seq=resultsSnapshot.sequence?`picks ${resultsSnapshot.sequence.bottom}–${resultsSnapshot.sequence.top}`:`${reviewPicks.length} rows`;
+    showToast(rec.unresolved.length?`Read ${seq} • ${rec.unresolved.length} need a quick correction.`:`Read ${seq} • review and apply ${rec.newRows.length} new pick${rec.newRows.length===1?'':'s'}.`);
+  }catch(e){console.error(e);resultsSnapshot=null;reviewPicks=[];renderScreenshotReview();showToast('Results reader could not build the Yahoo rows. Keep Pick, Player, and Team visible and include several consecutive picks.');qs('screenshotStatus').textContent=`Results read failed: ${e?.message||'unknown error'}. DraftForge memory was not changed.`}
   finally{try{await worker?.setParameters({tessedit_pageseg_mode:'11',preserve_interword_spaces:'1'})}catch{}if(button){button.disabled=false;button.textContent='Analyze Again'}}
 }
 function applyReviewedPicks(){

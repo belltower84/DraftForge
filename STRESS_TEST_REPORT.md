@@ -1,8 +1,8 @@
-# DraftForge V8.12 Validation Report
+# DraftForge V8.13 Validation Report
 
 ## Regression suite
 
-The full retained DraftForge test suite passes after the V8.12 Results Live Sync conversion:
+The full retained DraftForge test suite passes after the V8.13 Row-by-Row Results conversion:
 
 - 12/12 standard full-draft smoke tests complete with valid required rosters.
 - 14/14 full 14-team mock drafts complete with valid required rosters.
@@ -12,22 +12,23 @@ The full retained DraftForge test suite passes after the V8.12 Results Live Sync
 - V8.9 board snapshot reconstruction test remains green.
 - V8.10 dynamic-board test remains green.
 
-## V8.12 Results parser
+## V8.13 Results parser
 
 A dedicated Results-row parser test uses synthetic Tesseract-style word geometry modeled on Yahoo **Results → Round by Round**. It verifies:
 
-- explicit overall pick numbers are detected from the Pick column;
+- result rows are detected before player matching so names cannot drift onto neighboring picks;
+- consecutive descending pick numbers can repair a dropped leading digit without changing player identity;
 - newest-first Yahoo rows are reordered into chronological overall-pick order;
 - player names resolve against the DraftForge player pool;
 - the fantasy-team column can identify `Your Team` / user slot when visible;
 - overlapping previously stored picks are treated as confirmation;
 - only the new contiguous picks are proposed for application.
 
-Result: **PASS**.
+Result: **PASS**. The retained engine suite also passes 12/12 standard slots and 14/14 14-team slots.
 
 ## Editable Draft Tracker
 
-V8.12 treats applied overall-pick rows as the canonical draft ledger. Manual correction rebuilds engine state sequentially from the corrected rows, which prevents a player from remaining simultaneously drafted and available and ensures all team rosters, user roster, bye load, and opponent-pressure calculations use the same corrected state.
+V8.13 treats applied overall-pick rows as the canonical draft ledger. Manual correction rebuilds engine state sequentially from the corrected rows, which prevents a player from remaining simultaneously drafted and available and ensures all team rosters, user roster, bye load, and opponent-pressure calculations use the same corrected state.
 
 ## Safety behavior
 

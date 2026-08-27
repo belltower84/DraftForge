@@ -4,7 +4,7 @@
   else root.DraftForgeScreenshotSync=api;
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   const SUFFIXES=new Set(['jr','sr','ii','iii','iv','v']);
-  const TEAM_ALIASES={JAC:'JAX',SFO:'SF',GBP:'GB',KAN:'KC',NOR:'NO',NWE:'NE',TAM:'TB',LVR:'LV',AU:'ATL',GIN:'CIN'};
+  const TEAM_ALIASES={JAC:'JAX',SFO:'SF',GBP:'GB',KAN:'KC',NOR:'NO',NWE:'NE',TAM:'TB',LVR:'LV',AU:'ATL',GIN:'CIN',SES:'SEA'};
   const VALID_TEAMS=new Set(['ARI','ATL','BAL','BUF','CAR','CHI','CIN','CLE','DAL','DEN','DET','GB','HOU','IND','JAX','KC','LAC','LAR','LV','MIA','MIN','NE','NO','NYG','NYJ','PHI','PIT','SEA','SF','TB','TEN','WAS']);
   function normalizeName(s=''){return String(s).toLowerCase().replace(/[^a-z0-9]/g,'')}
   function words(s=''){return String(s).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim().split(/\s+/).filter(Boolean)}
@@ -55,6 +55,17 @@
       const sim=bestTokenSimilarity(chunk,a);nameSignal=Math.max(nameSignal,sim);
     }
     if(nameSignal>=.92)score+=54;else if(nameSignal>=.80)score+=42;else if(nameSignal>=.68)score+=29;else if(nameSignal>=.56)score+=16;
+    // Yahoo commonly abbreviates compound surnames (for example J. SMITH-NJIGBA).
+    // OCR may distort the second half while preserving the first. Reward a fuzzy
+    // adjacent-token match to the complete family name so a generic surname-only
+    // candidate (e.g. another Smith) does not steal the row.
+    if(parts.family.length>1){
+      const fam=parts.family.join(''),toks=words(chunk).map(normalizeName);let famSignal=0;
+      for(let i=0;i<toks.length-1;i++)famSignal=Math.max(famSignal,similarity(toks[i]+toks[i+1],fam));
+      if(famSignal>=.84){score+=76;nameSignal=Math.max(nameSignal,.94)}
+      else if(famSignal>=.70){score+=58;nameSignal=Math.max(nameSignal,.86)}
+      else if(famSignal>=.60){score+=34;nameSignal=Math.max(nameSignal,.72)}
+    }
     if(team&&team===p.team)score+=46;else if(team&&team!==p.team)score-=18;
     if(pos&&pos===p.pos)score+=28;else if(pos&&pos!==p.pos)score-=16;
     score+=Math.max(0,12-(+p.rank||200)/24);
@@ -240,6 +251,60 @@
     const throughPick=rows.reduce((m,r)=>Math.max(m,r.pick),0),unresolved=rows.filter(r=>!r.accepted).map(r=>r.pick);
     return{width,height,teams,rows,picks,throughPick,unresolved,teamNames,userSlot,rowTolerance:rowTol,pickColumnX:pickX};
   }
+  function parseLoosePickNumber(value,maxPicks=400){
+    const m=String(value??'').match(/\d{1,3}/);if(!m)return null;const n=+m[0];return n>=1&&n<=maxPicks?n:null;
+  }
+  function inferDescendingPickSequence(rows,options={}){
+    const maxPicks=+options.maxPicks||400,nextOverall=+options.nextOverall||1,count=(rows||[]).length;
+    if(!count)return null;
+    const nums=(rows||[]).map(r=>parseLoosePickNumber(r.rawPick,maxPicks));
+    const candidates=new Set();
+    nums.forEach((n,i)=>{if(!n)return;for(let add=0;add<=Math.min(maxPicks,90);add+=10){const top=n+add+i;if(top>=count&&top<=maxPicks)candidates.add(top)}});
+    // A common first sync is a complete opening round. This is only a fallback
+    // candidate; recognized pick digits must still beat it when available.
+    if(nextOverall===1&&count<=+options.teams)candidates.add(count);
+    if(!candidates.size)return null;
+    const existing=new Set((options.existingPicks||[]).map(x=>x.overall));
+    let best=null;
+    for(const top of candidates){
+      let score=0,exact=0;
+      for(let i=0;i<count;i++){
+        const expected=top-i,n=nums[i];
+        if(expected<1||expected>maxPicks){score-=100;continue}
+        if(n){if(n===expected){score+=20;exact++}else if(expected>=10&&expected%10===n){score+=4}else score-=9}
+        if(existing.has(expected))score+=2;
+      }
+      const bottom=top-count+1;
+      if(bottom<=nextOverall&&top>=nextOverall)score+=8;
+      else if(bottom>nextOverall+6)score-=4;
+      if(!best||score>best.score||(score===best.score&&exact>best.exact))best={top,bottom,score,exact,nums};
+    }
+    if(!best)return null;
+    // With no exact digit anchors, only allow the explicit opening-round fallback.
+    if(best.exact===0&&!(nextOverall===1&&best.top===count))return null;
+    return best;
+  }
+  function parseYahooResultsRows(rowRecords,players,options={}){
+    const teams=+options.teams||12,maxPicks=+options.maxPicks||400,existingPicks=options.existingPicks||[],nextOverall=+options.nextOverall||((existingPicks.length||0)+1);
+    const raw=(rowRecords||[]).filter(r=>r&&String(r.chunk||'').trim());
+    const seq=inferDescendingPickSequence(raw,{teams,maxPicks,nextOverall,existingPicks});
+    if(!seq)return{teams,rows:[],picks:[],throughPick:0,unresolved:[],teamNames:Array.from({length:teams},(_,i)=>`Team ${i+1}`),userSlot:null,sequence:null};
+    const seen=new Set(),existingByPick=new Map(existingPicks.map(x=>[x.overall,x])),teamNames=Array.from({length:teams},(_,i)=>`Team ${i+1}`),rows=[];let userSlot=null;
+    for(let i=0;i<raw.length;i++){
+      const r=raw[i],pick=seq.top-i;if(pick<1||pick>maxPicks)continue;
+      const team=snakeTeamForOverall(pick,teams),match=matchBoardCell(r.chunk,players,pick,seen),accepted=!!match?.accepted;
+      if(accepted)seen.add(match.player.id);
+      const fantasyTeam=String(r.fantasyTeam||'').replace(/\s+/g,' ').trim();
+      if(fantasyTeam&&fantasyTeam.length<=42&&!/^(pick|player|team)$/i.test(fantasyTeam)){teamNames[team-1]=fantasyTeam;const n=normalizeName(fantasyTeam);if(n.includes('yourteam')||n==='you'||n.startsWith('you'))userSlot=team}
+      const old=existingByPick.get(pick),known=!!(old&&accepted&&old.id===match.player.id);
+      rows.push({pick,overall:pick,team,chunk:r.chunk,raw:r.chunk,rawPick:r.rawPick??null,fantasyTeam,accepted,known,player:accepted?match.player:null,suggested:match?.player||null,confidence:match?.confidence||0,score:match?.score||0,gap:match?.gap||0,sourceY:r.sourceY??null,rowIndex:i});
+    }
+    rows.sort((a,b)=>a.pick-b.pick);
+    const picks=rows.filter(r=>r.accepted&&r.player).map(r=>({overall:r.pick,team:r.team,id:r.player.id,player:r.player,confidence:r.confidence,raw:r.raw,fantasyTeam:r.fantasyTeam}));
+    const throughPick=rows.reduce((m,r)=>Math.max(m,r.pick),0),unresolved=rows.filter(r=>!r.accepted).map(r=>r.pick);
+    return{teams,rows,picks,throughPick,unresolved,teamNames,userSlot,sequence:seq};
+  }
+
   function reconcileResultsSnapshot(snapshot,existingPicks=[],options={}){
     const byPick=new Map((existingPicks||[]).map(x=>[x.overall,x])),rows=(snapshot?.rows||[]).slice().sort((a,b)=>a.pick-b.pick),start=+options.nextOverall||((existingPicks?.length||0)+1),conflicts=[],newRows=[],confirmed=[];
     for(const r of rows){if(!r.player&&!r.matched)continue;const id=r.player?.id||r.matched?.id,old=byPick.get(r.pick);if(old){if(old.id===id)confirmed.push(r.pick);else conflicts.push({overall:r.pick,existing:old,incoming:r,reason:'pick-conflict'})}else if(r.pick>=start)newRows.push({...r,id})}
@@ -251,5 +316,5 @@
     return{safe,conflicts,confirmed,newRows,unresolved,throughPick:through};
   }
 
-  return{normalizeName,levenshtein,similarity,detectPos,detectTeam,scorePlayerChunk,playersFromYahooOcrText,alignDetectedPlayers,cleanOcrWords,boardOverall,boardColumnForOverall,matchBoardCell,parseYahooBoardWords,snapshotQuality,detectYahooBoardSnapshot,reconcileBoardSnapshot,snakeTeamForOverall,parseYahooResultsWords,reconcileResultsSnapshot};
+  return{normalizeName,levenshtein,similarity,detectPos,detectTeam,scorePlayerChunk,playersFromYahooOcrText,alignDetectedPlayers,cleanOcrWords,boardOverall,boardColumnForOverall,matchBoardCell,parseYahooBoardWords,snapshotQuality,detectYahooBoardSnapshot,reconcileBoardSnapshot,snakeTeamForOverall,parseYahooResultsWords,parseLoosePickNumber,inferDescendingPickSequence,parseYahooResultsRows,reconcileResultsSnapshot};
 });

@@ -1,6 +1,6 @@
-# DraftForge V8.12 — Results Live Sync
+# DraftForge V8.13 — Row-by-Row Results
 
-DraftForge V8.12 changes the live-draft workflow to use Yahoo **Results → Round by Round** as the primary screenshot source. The Results page exposes explicit overall pick numbers and clean player rows, which is substantially easier to OCR reliably than the compressed Yahoo Board.
+DraftForge V8.13 changes the live-draft workflow to use Yahoo **Results → Round by Round** as the primary screenshot source. The Results page exposes explicit overall pick numbers and clean player rows, which is substantially easier to OCR reliably than the compressed Yahoo Board.
 
 ## Primary draft-day workflow
 
@@ -13,6 +13,10 @@ DraftForge V8.12 changes the live-draft workflow to use Yahoo **Results → Roun
 7. DraftForge updates the Draft Tracker, all team rosters, available-player pool, bye-week exposure, opponent pressure, survival odds, and Best Move Now.
 
 Overlapping previously synced picks are useful: DraftForge treats them as confirmation and adds only new picks.
+
+### V8.13 row reader
+
+V8.13 no longer asks one whole-screen OCR pass to pair pick numbers and players. It locates the Results header, detects the horizontal result-row bands, enlarges only the Results table, groups OCR words by row, and infers the consecutive descending pick sequence from multiple rows. If a pick number loses a leading digit (for example `12` reading as `2`), neighboring rows can repair the sequence. Player identity is still never guessed: ambiguous rows remain editable **FIX** rows. A capped second OCR pass is used only for unresolved new rows to keep the live workflow fast.
 
 ## Editable Draft Tracker
 

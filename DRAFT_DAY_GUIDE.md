@@ -1,4 +1,4 @@
-# DraftForge V8.12 — Draft Day Guide
+# DraftForge V8.13 — Draft Day Guide
 
 ## Before the draft
 
@@ -20,7 +20,7 @@ You do not need a screenshot after every pick.
 1. `Win + Shift + S`
 2. Capture Yahoo **Results → Round by Round**, including Pick, Player, and Team columns.
 3. `Ctrl + V` in DraftForge.
-4. Review detected rows.
+4. Review detected rows. V8.13 reads each Yahoo result row as a unit; a weak player match stays marked **FIX**.
 5. Correct any yellow **FIX** row by typing the exact player name.
 6. Click **Apply Reviewed Picks**.
 

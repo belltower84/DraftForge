@@ -29,4 +29,32 @@ const laterWords=words.filter(w=>w.text==='Pick'||w.text==='Player'||w.text==='T
 const overlap=sync.parseYahooResultsWords(laterWords,players,{width:1000,height:500,teams:12,maxPicks:180,existingPicks:existing});
 const rec=sync.reconcileResultsSnapshot(overlap,existing,{nextOverall:9});
 assert.ok(rec.newRows.every((r,i)=>r.pick===9+i),'overlap should add only contiguous new picks');
-console.log('PASS: V8.12 Yahoo Results parser reads explicit pick rows and preserves overlap continuity.');
+console.log('PASS: legacy Yahoo Results parser reads explicit pick rows and preserves overlap continuity.');
+
+// V8.13 row-by-row path: model the kinds of distortions observed in a real Yahoo
+// Results screenshot. The first pick number loses its leading 1 (12 -> 2), but
+// the remaining descending sequence should repair the numbering without guessing
+// player identity. Ambiguous rows must remain unresolved for manual review.
+const rowRecords=[
+  {rawPick:'2',chunk:'S. BARKLEY RB Phi Bye 10',fantasyTeam:'Team12'},
+  {rawPick:'11',chunk:'CUM WR Dal Bye 14',fantasyTeam:'Nicholas'},
+  {rawPick:'10',chunk:'C BROWN RB Cin Bye 6',fantasyTeam:'Gus Stewart'},
+  {rawPick:'9',chunk:'J SMITH ALEGBA WR Ses Bye 11',fantasyTeam:'Goz'},
+  {rawPick:'8',chunk:'LoKeS RB Buf Bye 7',fantasyTeam:'tj'},
+  {rawPick:'7',chunk:'A ST BROWN WR Det Bye 6',fantasyTeam:'Keith'},
+  {rawPick:'6',chunk:'Atmel RB Ind Bye 3',fantasyTeam:'Beach Ballers'},
+  {rawPick:'5',chunk:'C MCCAFFREY RB SF Bye 8',fantasyTeam:'PatrickF'},
+  {rawPick:'4',chunk:'PNAQA WR LAR Bye 11',fantasyTeam:'Jentry'},
+  {rawPick:'3',chunk:'AGHUSE WR Gin Bye 6',fantasyTeam:'Your Team'},
+  {rawPick:'2',chunk:'B ROBSISON RB Au Bye 11',fantasyTeam:'Brantley'},
+  {rawPick:'1',chunk:'Lapas RB Det Bye 6',fantasyTeam:'Tommy'},
+];
+const rowSnap=sync.parseYahooResultsRows(rowRecords,players,{teams:12,maxPicks:180,nextOverall:1,existingPicks:[]});
+assert.strictEqual(rowSnap.sequence.top,12,'row sequence should repair a dropped leading digit at pick 12');
+assert.strictEqual(rowSnap.rows.length,12,'row path should preserve all 12 Yahoo result rows');
+assert.strictEqual(rowSnap.rows.find(r=>r.pick===9).player?.name,'Jaxon Smith-Njigba','compound-surname OCR should not collapse to a generic Smith');
+assert.strictEqual(rowSnap.rows.find(r=>r.pick===12).player?.name,'Saquon Barkley');
+assert.strictEqual(rowSnap.rows.find(r=>r.pick===1).player?.name,'Jahmyr Gibbs');
+assert.ok(rowSnap.unresolved.includes(11),'an ambiguous player row should stay editable instead of being guessed');
+assert.notStrictEqual(rowSnap.rows.find(r=>r.pick===11).suggested?.name,'George Pickens','ambiguous DAL WR metadata must not silently become another player');
+console.log('PASS: V8.13 row-by-row parser repairs pick sequencing and leaves ambiguous players unresolved.');
